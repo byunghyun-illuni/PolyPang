@@ -1,0 +1,11 @@
+# Railway 배포 시 제외할 파일
+
+node_modules/
+.env
+*.log
+.DS_Store
+.vscode/
+*.test.ts
+*.spec.ts
+coverage/
+.git/

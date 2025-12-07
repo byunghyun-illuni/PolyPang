@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "chrome",
+      "request": "launch",
+      "name": "🚀 Launch Chrome - PolyPang Client",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/src",
+      "sourceMaps": true,
+      "preLaunchTask": "npm: dev"
+    },
+    {
+      "type": "chrome",
+      "request": "attach",
+      "name": "🔗 Attach to Chrome",
+      "port": 9222,
+      "webRoot": "${workspaceFolder}/src"
+    }
+  ]
+}

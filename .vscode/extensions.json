@@ -1,0 +1,24 @@
+{
+  "recommendations": [
+    // 필수 (TypeScript + React)
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "bradlc.vscode-tailwindcss",
+
+    // 생산성 향상
+    "usernamehw.errorlens",
+    "aaron-bond.better-comments",
+    "streetsidesoftware.code-spell-checker",
+
+    // Git
+    "eamodio.gitlens",
+
+    // 디버깅
+    "ms-vscode.vscode-typescript-next",
+
+    // 옵션 (강력 추천)
+    "christian-kohler.path-intellisense",
+    "formulahendry.auto-rename-tag",
+    "naumovs.color-highlight"
+  ]
+}
