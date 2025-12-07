@@ -1,6 +1,6 @@
 # Nixpacks 설정 - Railway 배포용
 [phases.setup]
-nixPkgs = ["nodejs_20", "npm"]
+nixPkgs = ["nodejs_20"]
 
 [phases.build]
 cmds = [
