@@ -9,15 +9,12 @@
       "isBackground": true,
       "problemMatcher": {
         "pattern": {
-          "regexp": "^.*$",
-          "file": 1,
-          "location": 2,
-          "message": 3
+          "regexp": "^$"
         },
         "background": {
           "activeOnStart": true,
-          "beginsPattern": "VITE.*ready in",
-          "endsPattern": "Local:.*http://localhost:5173"
+          "beginsPattern": "^\\s*VITE",
+          "endsPattern": "localhost:\\d+"
         }
       },
       "presentation": {
@@ -34,15 +31,12 @@
       "isBackground": true,
       "problemMatcher": {
         "pattern": {
-          "regexp": "^.*$",
-          "file": 1,
-          "location": 2,
-          "message": 3
+          "regexp": "^$"
         },
         "background": {
           "activeOnStart": true,
-          "beginsPattern": "Server is running",
-          "endsPattern": "Server is running on port"
+          "beginsPattern": "^\\s*>",
+          "endsPattern": "Server is ready"
         }
       },
       "presentation": {

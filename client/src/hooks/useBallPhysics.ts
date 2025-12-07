@@ -18,15 +18,16 @@ import {
   getSideNormal,
   getSideTangent,
   getSideLength,
-  getSideAngle,
 } from '@/physics/geometry'
-import { add, multiply } from '@/physics/vector'
+import { add, multiply, dot } from '@/physics/vector'
 import {
   checkBallPaddleCollision,
+  checkBallLineCollision,
   isBallOutOfArena,
-  isBallPassingSide,
 } from '@/physics/collision'
-import { reflectWithSpeedBoost } from '@/physics/reflection'
+import { getSideVertices } from '@/physics/geometry'
+import { reflectWithPaddleAngle } from '@/physics/reflection'
+import { magnitude, normalize, multiply as multiplyVec } from '@/physics/vector'
 
 interface PaddleInfo {
   sideIndex: number
@@ -71,6 +72,7 @@ export function useBallPhysics(options: UseBallPhysicsOptions) {
   const velocityRef = useRef<Vector2D>(initialVelocity)
   const lastHitTimeRef = useRef<number>(0)
   const initialVelocityRef = useRef(initialVelocity)
+  const isFirstHitRef = useRef<boolean>(true) // 첫 HIT 여부 추적
 
   // 초기 속도 저장
   useEffect(() => {
@@ -108,17 +110,24 @@ export function useBallPhysics(options: UseBallPhysicsOptions) {
 
         // 패들 중심 좌표 (renderN 기준)
         const sideCenter = getSideCenter(actualSideIndex, renderN, arenaRadius)
+        const normal = getSideNormal(actualSideIndex, renderN)
         const tangent = getSideTangent(actualSideIndex, renderN)
         const offset = (paddlePos * paddleMoveRange) / 2
         const paddleCenter = add(sideCenter, multiply(tangent, offset))
 
-        // 🔑 패들 두께를 고려한 충돌 체크
-        // 패들 두께 = ballRadius * 3 (충분히 넓게)
-        const paddleThickness = ballRadius * 3
+        // 공이 Side 방향으로 이동 중인지 체크 (안쪽→바깥쪽)
+        const velocityTowardsSide = dot(currentVel, normal)
+        if (velocityTowardsSide <= 0) {
+          // Side에서 멀어지는 중이면 충돌 체크 스킵
+          continue
+        }
 
+        // 패들과의 충돌 체크
+        // 패들 두께(약 8px)를 고려해서 공 반지름에 추가
+        const paddleThickness = 4 // 패들 두께의 절반
         const collision = checkBallPaddleCollision(
           currentPos,
-          ballRadius + paddleThickness, // 패들 두께만큼 확장된 반지름
+          ballRadius + paddleThickness,
           paddleCenter,
           tangent,
           paddleLength
@@ -126,105 +135,148 @@ export function useBallPhysics(options: UseBallPhysicsOptions) {
 
         if (collision.collided) {
           // HIT!
-          const normal = getSideNormal(actualSideIndex, renderN)
+          // 패들의 어느 부분을 맞췄는지 계산 (t: 0=시작점, 0.5=중앙, 1=끝점)
+          // paddleOffset: -1(왼쪽 끝) ~ 0(중앙) ~ 1(오른쪽 끝)
+          // 화면 기준 왼쪽/오른쪽과 일치하도록 부호 반전
+          const paddleOffset = collision.t !== undefined ? -((collision.t - 0.5) * 2) : 0
+          const deflectStrength = 0.7 // 꺾임 강도 (0~1)
 
-          // 속도 반사 및 증가
-          newVelocity = reflectWithSpeedBoost(
-            currentVel,
-            normal,
-            GAME_CONSTANTS.BALL_SPEED_INCREMENT
-          )
+          if (isFirstHitRef.current) {
+            // 첫 HIT: 정상 속도로 점프 후 반사
+            isFirstHitRef.current = false
+            const currentSpeed = Math.sqrt(currentVel.x ** 2 + currentVel.y ** 2)
+            const normalizedVel = {
+              x: currentVel.x / currentSpeed,
+              y: currentVel.y / currentSpeed,
+            }
+            // 정상 속도로 설정 후 반사
+            const boostedVel = {
+              x: normalizedVel.x * GAME_CONSTANTS.BALL_NORMAL_SPEED,
+              y: normalizedVel.y * GAME_CONSTANTS.BALL_NORMAL_SPEED,
+            }
+            // 패들 위치에 따른 각도 조정 적용
+            const reflected = reflectWithPaddleAngle(boostedVel, normal, paddleOffset, deflectStrength)
+            newVelocity = reflected // 첫 HIT는 추가 가속 없음
+          } else {
+            // 이후 HIT: 패들 위치에 따른 각도 조정 + 가속
+            const reflected = reflectWithPaddleAngle(currentVel, normal, paddleOffset, deflectStrength)
+            // 속도 증가 적용
+            const speed = magnitude(reflected) * GAME_CONSTANTS.BALL_SPEED_INCREMENT
+            const dir = normalize(reflected)
+            newVelocity = multiplyVec(dir, speed)
+          }
 
-          // 🔑 중요: 공을 Side 위치 기준으로 밀어냄 (패들 관통 방지)
-          // Side 중심에서 Arena 안쪽으로 ballRadius + 여유 공간만큼 떨어진 위치
-          const pushDistance = ballRadius + 5
-          newPosition = add(sideCenter, multiply(normal, -pushDistance))
+          // 공을 패들에서 밀어냄 (관통 방지)
+          const pushDistance = ballRadius + 2
+          newPosition = add(currentPos, multiply(normal, -pushDistance))
 
           collisionDetected = true
-          onPaddleHit?.(i) // 플레이어 인덱스 전달 (0 or 1)
+          onPaddleHit?.(i)
 
           // HIT 이펙트 활성화
           setHitEffectActive(true)
           lastHitTimeRef.current = Date.now()
 
-          console.log(`[Ball] HIT on Side ${actualSideIndex} (Player ${i}), speed: ${Math.sqrt(newVelocity.x ** 2 + newVelocity.y ** 2).toFixed(1)}`)
+          console.log(`[Ball] HIT on Side ${actualSideIndex} (Player ${i}), offset: ${paddleOffset.toFixed(2)}, speed: ${Math.sqrt(newVelocity.x ** 2 + newVelocity.y ** 2).toFixed(1)}`)
 
           break
         }
       }
 
-      // 2. N=2 모드: 벽(Side 1, 3) 반사 처리
+      // 2. N=2 모드: 벽(Side 1, 3) 반사 처리 - 실제 벽 선분과의 충돌 감지
       if (!collisionDetected && playerCount === 2) {
-        // 내접원 반지름
-        const inRadius = arenaRadius * Math.cos(Math.PI / renderN)
+        // Side 1 (오른쪽) 또는 Side 3 (왼쪽) 체크 - 벽으로만 작동
+        for (const sideIdx of [1, 3]) {
+          const normal = getSideNormal(sideIdx, renderN)
 
-        if (isBallOutOfArena(newPosition, inRadius)) {
-          const anglePerSide = 360 / renderN
-
-          // Side 1 (오른쪽) 또는 Side 3 (왼쪽) 체크 - 벽으로만 작동
-          for (let sideIdx = 1; sideIdx <= 3; sideIdx += 2) {
-            // Side 1, 3만 체크
-            const sideAngle = getSideAngle(sideIdx, renderN)
-
-            if (isBallPassingSide(newPosition, sideAngle, anglePerSide)) {
-              // 벽 반사 (입사각 = 반사각)
-              const normal = getSideNormal(sideIdx, renderN)
-              const sideCenter = getSideCenter(sideIdx, renderN, arenaRadius)
-
-              // 반사 (속도 증가 없음)
-              const dotProduct = currentVel.x * normal.x + currentVel.y * normal.y
-              newVelocity = {
-                x: currentVel.x - 2 * dotProduct * normal.x,
-                y: currentVel.y - 2 * dotProduct * normal.y,
-              }
-
-              // 공을 벽에서 밀어냄
-              const pushDistance = ballRadius + 5
-              newPosition = add(sideCenter, multiply(normal, -pushDistance))
-
-              console.log(`[Ball] 벽 반사 (Side ${sideIdx})`)
-              collisionDetected = true
-              break
-            }
+          // 공이 벽 쪽으로 이동 중인지 체크 (이미 반사되어 멀어지는 중이면 스킵)
+          const velocityTowardsWall = dot(currentVel, normal)
+          if (velocityTowardsWall <= 0) {
+            continue
           }
 
-          // 패들 있는 Side (0, 2)에 닿았는데 패들 충돌 안했으면 → 즉시 OUT
-          if (!collisionDetected) {
-            for (let i = 0; i < playerCount; i++) {
-              const actualSideIndex = playerSideIndices[i] // 0 or 2
-              const sideAngle = getSideAngle(actualSideIndex, renderN)
+          // 실제 벽 선분과의 충돌 체크
+          const [v1, v2] = getSideVertices(sideIdx, renderN, arenaRadius)
+          const wallCollision = checkBallLineCollision(newPosition, ballRadius, {
+            start: v1,
+            end: v2,
+          })
 
-              if (isBallPassingSide(newPosition, sideAngle, anglePerSide)) {
-                // 패들 못 막음 → OUT!
-                console.log(`[Ball] OUT! Side ${actualSideIndex} (Player ${i}) - 패들 미스`)
-                onPlayerOut?.(i)
-
-                velocityRef.current = { x: 0, y: 0 }
-                return { velocity: { x: 0, y: 0 }, position: newPosition }
-              }
+          if (wallCollision.collided) {
+            // 벽 반사 (입사각 = 반사각) + 5% 속도 증가
+            const wallSpeedBoost = 1.05
+            newVelocity = {
+              x: (currentVel.x - 2 * velocityTowardsWall * normal.x) * wallSpeedBoost,
+              y: (currentVel.y - 2 * velocityTowardsWall * normal.y) * wallSpeedBoost,
             }
+
+            // 공을 벽에서 안쪽으로 밀어냄
+            const pushDistance = ballRadius + 2
+            newPosition = add(newPosition, multiply(normal, -pushDistance))
+
+            console.log(`[Ball] 벽 반사 (Side ${sideIdx})`)
+            collisionDetected = true
+            break
           }
         }
-      }
 
-      // 3. N≥3 모드: 기존 OUT 판정
-      if (!collisionDetected && playerCount >= 3) {
-        const inRadius = arenaRadius * Math.cos(Math.PI / renderN)
-
-        if (isBallOutOfArena(newPosition, inRadius)) {
-          const anglePerSide = 360 / renderN
-
+        // 패들 있는 Side (0, 2)에 닿았는데 패들 충돌 안했으면 → 즉시 OUT
+        // 실제 벽 선분과의 충돌로 체크
+        if (!collisionDetected) {
           for (let i = 0; i < playerCount; i++) {
-            const actualSideIndex = playerSideIndices[i]
-            const sideAngle = getSideAngle(actualSideIndex, renderN)
+            const actualSideIndex = playerSideIndices[i] // 0 or 2
+            const normal = getSideNormal(actualSideIndex, renderN)
 
-            if (isBallPassingSide(newPosition, sideAngle, anglePerSide)) {
-              console.log(`[Ball] OUT! Side ${actualSideIndex} (Player ${i}) passed`)
+            // 공이 이 Side 방향으로 이동 중인지 확인
+            const velocityTowardsSide = dot(currentVel, normal)
+            if (velocityTowardsSide <= 0) {
+              continue
+            }
+
+            // 실제 Side 선분과의 충돌 체크
+            const [v1, v2] = getSideVertices(actualSideIndex, renderN, arenaRadius)
+            const sideCollision = checkBallLineCollision(newPosition, ballRadius, {
+              start: v1,
+              end: v2,
+            })
+
+            if (sideCollision.collided) {
+              // 패들 못 막음 → OUT!
+              console.log(`[Ball] OUT! Side ${actualSideIndex} (Player ${i}) - 패들 미스`)
               onPlayerOut?.(i)
 
               velocityRef.current = { x: 0, y: 0 }
               return { velocity: { x: 0, y: 0 }, position: newPosition }
             }
+          }
+        }
+      }
+
+      // 3. N≥3 모드: 실제 Side 선분과의 충돌로 OUT 판정
+      if (!collisionDetected && playerCount >= 3) {
+        for (let i = 0; i < playerCount; i++) {
+          const actualSideIndex = playerSideIndices[i]
+          const normal = getSideNormal(actualSideIndex, renderN)
+
+          // 공이 이 Side 방향으로 이동 중인지 확인
+          const velocityTowardsSide = dot(currentVel, normal)
+          if (velocityTowardsSide <= 0) {
+            continue
+          }
+
+          // 실제 Side 선분과의 충돌 체크
+          const [v1, v2] = getSideVertices(actualSideIndex, renderN, arenaRadius)
+          const sideCollision = checkBallLineCollision(newPosition, ballRadius, {
+            start: v1,
+            end: v2,
+          })
+
+          if (sideCollision.collided) {
+            console.log(`[Ball] OUT! Side ${actualSideIndex} (Player ${i}) passed`)
+            onPlayerOut?.(i)
+
+            velocityRef.current = { x: 0, y: 0 }
+            return { velocity: { x: 0, y: 0 }, position: newPosition }
           }
         }
       }
@@ -307,6 +359,7 @@ export function useBallPhysics(options: UseBallPhysicsOptions) {
     setHitEffectActive(false)
     velocityRef.current = initialVelocityRef.current
     lastHitTimeRef.current = 0
+    isFirstHitRef.current = true // 첫 HIT 상태 리셋
   }, [initialPosition])
 
   return {

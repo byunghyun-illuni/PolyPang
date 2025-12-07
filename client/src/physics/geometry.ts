@@ -154,8 +154,9 @@ export function getArenaRotationForMyPlayer(
   n: number
 ): number {
   const myAngle = getSideAngle(myIndex, n)
-  // 반대 방향으로 회전하여 내 Side가 하단(90도)에 오도록
-  return -myAngle - 90
+  // 내 Side가 하단(90도, 6시 방향)에 오도록 회전
+  // myAngle이 -90(상단)이면 180도 회전 필요
+  return 90 - myAngle
 }
 
 /**

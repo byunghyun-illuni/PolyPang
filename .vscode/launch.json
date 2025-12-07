@@ -2,6 +2,23 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "🚀 Full Stack",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "${workspaceFolder}/server",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"],
+      "envFile": "${workspaceFolder}/server/.env",
+      "serverReadyAction": {
+        "pattern": "Server is ready",
+        "uriFormat": "http://localhost:5173",
+        "action": "openExternally"
+      },
+      "preLaunchTask": "Start Client Dev Server"
+    },
+    {
       "name": "🎮 Client (Chrome)",
       "type": "chrome",
       "request": "launch",
@@ -14,7 +31,7 @@
       }
     },
     {
-      "name": "🔧 Server",
+      "name": "🔧 Server Only",
       "type": "node",
       "request": "launch",
       "runtimeExecutable": "npm",
@@ -23,33 +40,6 @@
       "console": "integratedTerminal",
       "skipFiles": ["<node_internals>/**"],
       "envFile": "${workspaceFolder}/server/.env"
-    },
-    {
-      "name": "🚀 Full Stack (Client + Server)",
-      "type": "node",
-      "request": "launch",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "cwd": "${workspaceFolder}/server",
-      "console": "integratedTerminal",
-      "serverReadyAction": {
-        "pattern": "Server is running on port ([0-9]+)",
-        "uriFormat": "http://localhost:5173",
-        "action": "debugWithChrome"
-      },
-      "preLaunchTask": "Start Client Dev Server"
-    }
-  ],
-  "compounds": [
-    {
-      "name": "🎯 Client + Server (Parallel)",
-      "configurations": ["🎮 Client (Chrome)", "🔧 Server"],
-      "presentation": {
-        "hidden": false,
-        "group": "PolyPang",
-        "order": 1
-      },
-      "stopAll": true
     }
   ]
 }

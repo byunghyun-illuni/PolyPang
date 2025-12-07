@@ -11,8 +11,8 @@ import { Container, Graphics, Text, TextStyle } from 'pixi.js'
 import {
   getAllVertices,
   getSideCenter,
+  degToRad,
 } from '@/physics/geometry'
-import { getPlayerColor } from '@/utils/colors'
 import { getPaddleRatios } from '@/utils/constants'
 
 interface PolygonRendererOptions {
@@ -24,6 +24,8 @@ interface PolygonRendererOptions {
   players: Array<{ nickname: string; userId: string }>
   /** 내 플레이어 인덱스 */
   myPlayerIndex: number
+  /** Arena 회전 각도 (라벨 역회전용) */
+  arenaRotation?: number
 }
 
 export class PolygonRenderer {
@@ -54,9 +56,6 @@ export class PolygonRenderer {
     // 정N각형 외곽선 그리기 (renderN 사용)
     this.drawPolygon(renderN, radius)
 
-    // Side별 색상 표시 (실제 플레이어 수: n, 렌더링 수: renderN)
-    this.drawSides(n, renderN, radius, players, myPlayerIndex)
-
     // 플레이어 라벨 그리기 (실제 플레이어 수: n, 렌더링 수: renderN)
     this.drawLabels(n, renderN, radius, players, myPlayerIndex)
   }
@@ -77,58 +76,6 @@ export class PolygonRenderer {
   }
 
   /**
-   * Side별 색상 띠 그리기
-   * @param actualN - 실제 플레이어 수
-   * @param renderN - 렌더링용 다각형 변의 수
-   */
-  private drawSides(
-    actualN: number,
-    renderN: number,
-    radius: number,
-    _players: Array<{ nickname: string; userId: string }>,
-    myPlayerIndex: number
-  ) {
-    const vertices = getAllVertices(renderN, radius)
-
-    // N=2일 때는 Side 0(상단), Side 2(하단)만 플레이어 배치
-    const playerSideIndices = actualN === 2 ? [0, 2] : Array.from({ length: actualN }, (_, i) => i)
-
-    for (let i = 0; i < actualN; i++) {
-      const sideIndex = playerSideIndices[i]
-      const v1 = vertices[sideIndex]
-      const v2 = vertices[(sideIndex + 1) % renderN]
-
-      // Side 중앙 60% 구간에만 색상 띠
-      const center = {
-        x: (v1.x + v2.x) / 2,
-        y: (v1.y + v2.y) / 2,
-      }
-      const direction = {
-        x: v2.x - v1.x,
-        y: v2.y - v1.y,
-      }
-      const length = Math.sqrt(direction.x ** 2 + direction.y ** 2)
-
-      const coloredStart = {
-        x: center.x - (direction.x / length) * (length * 0.3),
-        y: center.y - (direction.y / length) * (length * 0.3),
-      }
-      const coloredEnd = {
-        x: center.x + (direction.x / length) * (length * 0.3),
-        y: center.y + (direction.y / length) * (length * 0.3),
-      }
-
-      // 색상 결정
-      const color = getPlayerColor(i)
-      const width = i === myPlayerIndex ? 4 : 2 // 내 Side는 더 두껍게
-
-      this.graphics.lineStyle(width, parseInt(color.replace('#', ''), 16), 1)
-      this.graphics.moveTo(coloredStart.x, coloredStart.y)
-      this.graphics.lineTo(coloredEnd.x, coloredEnd.y)
-    }
-  }
-
-  /**
    * 플레이어 라벨 그리기
    * @param actualN - 실제 플레이어 수
    * @param renderN - 렌더링용 다각형 변의 수
@@ -142,6 +89,9 @@ export class PolygonRenderer {
   ) {
     // N=2일 때는 Side 0(상단), Side 2(하단)만 플레이어 배치
     const playerSideIndices = actualN === 2 ? [0, 2] : Array.from({ length: actualN }, (_, i) => i)
+
+    // Arena 회전 각도 (라벨 역회전용)
+    const arenaRotation = this.options.arenaRotation || 0
 
     for (let i = 0; i < actualN; i++) {
       const sideIndex = playerSideIndices[i]
@@ -162,6 +112,9 @@ export class PolygonRenderer {
       label.anchor.set(0.5)
       label.x = center.x
       label.y = center.y
+
+      // Arena 회전의 역방향으로 라벨 회전 (텍스트가 항상 정방향으로 보이도록)
+      label.rotation = -degToRad(arenaRotation)
 
       this.labels.push(label)
       this.container.addChild(label)

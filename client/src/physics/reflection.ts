@@ -61,34 +61,48 @@ export function reflectWithSpeedBoost(
 }
 
 /**
- * 패들 위치에 따른 반사각 미세 조정 (옵션)
+ * 패들 위치에 따른 반사각 조정
  *
- * 패들의 좌/우 위치에 따라 반사각을 약간 조정
+ * 패들의 좌/우 위치에 따라 반사 방향을 조정
+ * - 패들 왼쪽 끝을 맞추면 → 공이 왼쪽 방향으로 더 꺾임
+ * - 패들 오른쪽 끝을 맞추면 → 공이 오른쪽 방향으로 더 꺾임
  *
  * @param velocity - 입사 속도 벡터
- * @param normal - 법선 벡터
+ * @param normal - 법선 벡터 (바깥쪽 방향)
+ * @param tangent - 패들 탄젠트 벡터 (패들 방향)
  * @param paddleOffset - 패들 중심에서의 상대 위치 (-1 ~ 1)
- * @param maxAngleAdjust - 최대 각도 조정 (라디안, 기본 0.1 = ~5.7도)
+ * @param deflectStrength - 꺾임 강도 (0~1, 기본 0.5)
  * @returns 조정된 반사 속도 벡터
  */
 export function reflectWithPaddleAngle(
   velocity: Vector2D,
   normal: Vector2D,
   paddleOffset: number,
-  maxAngleAdjust: number = 0.1
+  deflectStrength: number = 0.5
 ): Vector2D {
   // 기본 반사
   const reflected = reflect(velocity, normal)
+  const speed = magnitude(reflected)
 
-  // 패들 오프셋에 따른 각도 조정 (-maxAngleAdjust ~ +maxAngleAdjust)
-  const angleAdjust = paddleOffset * maxAngleAdjust
+  // 반사 방향 정규화
+  const reflectedDir = normalize(reflected)
 
-  // 회전 행렬 적용
-  const cos = Math.cos(angleAdjust)
-  const sin = Math.sin(angleAdjust)
+  // 패들 탄젠트 방향 (법선의 수직, 시계 방향 90도 회전)
+  // Arena 회전을 고려하여 화면상 왼쪽/오른쪽과 일치하도록
+  const tangent = { x: normal.y, y: -normal.x }
 
-  return {
-    x: reflected.x * cos - reflected.y * sin,
-    y: reflected.x * sin + reflected.y * cos,
+  // 패들 오프셋에 비례하여 탄젠트 방향으로 방향 조정
+  // paddleOffset: -1(왼쪽) ~ 0(중앙) ~ 1(오른쪽)
+  const deflection = paddleOffset * deflectStrength
+
+  // 새 방향 = 반사 방향 + 탄젠트 방향 * deflection
+  const newDir = {
+    x: reflectedDir.x + tangent.x * deflection,
+    y: reflectedDir.y + tangent.y * deflection,
   }
+
+  // 정규화 후 원래 속도 적용
+  const newDirNorm = normalize(newDir)
+
+  return multiply(newDirNorm, speed)
 }

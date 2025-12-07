@@ -63,7 +63,7 @@ PolyPang/
 
 ### 개발 환경 요구사항
 
-- Node.js v16+
+- Node.js v18+
 - npm or yarn
 
 ### 설치 및 실행
@@ -81,13 +81,14 @@ npm install
 cp .env.example .env
 npm run dev
 ```
+> 서버가 `http://localhost:3001`에서 실행됩니다.
 
 3. **클라이언트 설정** (새 터미널)
 ```bash
 cd client
 npm install
 cp .env.example .env
-npm start
+npm run dev
 ```
 
 4. **브라우저에서 접속**

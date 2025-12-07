@@ -17,7 +17,9 @@ export const GAME_CONSTANTS = {
 
   // Ball
   BALL_INITIAL_SPEED: 0.3, // 초기 속도 (R/초)
-  BALL_SPEED_INCREMENT: 1.02, // HIT마다 2% 증가 (1.05에서 감소)
+  BALL_FIRST_TURN_SPEED: 50, // 첫 턴 느린 속도
+  BALL_NORMAL_SPEED: 100, // 첫 HIT 후 정상 속도
+  BALL_SPEED_INCREMENT: 1.08, // HIT마다 8% 증가
   BALL_RADIUS_RATIO: 0.03, // Arena 대비 공 크기
 
   // Timing
@@ -57,9 +59,13 @@ export const ENV = {
 /**
  * N-adaptive 패들 비율 계산 (PolyPang 밸런싱)
  *
+ * 핵심 공식: alpha + beta = 1
+ * - 이 조건을 만족해야 패들 끝점이 Side 끝점까지 도달 가능
+ * - 패들 중심 이동범위(beta/2) + 패들 절반 길이(alpha/2) = Side 절반(0.5)
+ *
  * 철학:
- * - N이 작을수록 Side가 길어짐 → 패들을 크게, 이동범위를 넓게
- * - N이 클수록 Side가 짧아짐 → 패들을 작게, 이동범위를 좁게
+ * - N이 작을수록 Side가 길어짐 → 패들을 크게
+ * - N이 클수록 Side가 짧아짐 → 패들을 작게
  *
  * @param n - 플레이어 수 (2~8)
  * @returns { alpha: 패들 길이 비율, beta: 이동 범위 비율, renderN: 렌더링용 N }
@@ -71,44 +77,69 @@ export function getPaddleRatios(n: number): {
 } {
   // N=2: 정사각형(N=4)으로 렌더링하되 2명만 배치 (위/아래)
   if (n === 2) {
+    const alpha = 0.5 // 매우 큰 패들 (50%)
     return {
-      alpha: 0.5, // 매우 큰 패들 (50%)
-      beta: 0.9, // 거의 전체 이동 (90%)
+      alpha,
+      beta: 1 - alpha, // 0.5 (alpha + beta = 1)
       renderN: 4, // 정사각형으로 렌더링
     }
   }
 
   // N=3: 정삼각형, 큰 패들
   if (n === 3) {
+    const alpha = 0.4 // 40% 패들
     return {
-      alpha: 0.4, // 40% 패들
-      beta: 0.85, // 85% 이동범위
+      alpha,
+      beta: 1 - alpha, // 0.6 (alpha + beta = 1)
       renderN: 3,
     }
   }
 
   // N=4: 정사각형
   if (n === 4) {
+    const alpha = 0.35 // 35% 패들
     return {
-      alpha: 0.3, // 30% 패들
-      beta: 0.75, // 75% 이동범위
+      alpha,
+      beta: 1 - alpha, // 0.65 (alpha + beta = 1)
       renderN: 4,
     }
   }
 
   // N=5: 정오각형
   if (n === 5) {
+    const alpha = 0.3 // 30% 패들
     return {
-      alpha: 0.25, // 25% 패들
-      beta: 0.7, // 70% 이동범위
+      alpha,
+      beta: 1 - alpha, // 0.7 (alpha + beta = 1)
       renderN: 5,
     }
   }
 
-  // N≥6: 기본값
+  // N=6: 정육각형
+  if (n === 6) {
+    const alpha = 0.25 // 25% 패들
+    return {
+      alpha,
+      beta: 1 - alpha, // 0.75 (alpha + beta = 1)
+      renderN: 6,
+    }
+  }
+
+  // N=7: 정칠각형
+  if (n === 7) {
+    const alpha = 0.22 // 22% 패들
+    return {
+      alpha,
+      beta: 1 - alpha, // 0.78 (alpha + beta = 1)
+      renderN: 7,
+    }
+  }
+
+  // N≥8: 정팔각형 이상
+  const alpha = 0.2 // 20% 패들
   return {
-    alpha: GAME_CONSTANTS.PADDLE_LENGTH_RATIO, // 0.2 (20%)
-    beta: GAME_CONSTANTS.PADDLE_MOVE_RANGE, // 0.6 (60%)
+    alpha,
+    beta: 1 - alpha, // 0.8 (alpha + beta = 1)
     renderN: n,
   }
 }
