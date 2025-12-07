@@ -129,6 +129,17 @@ npm run build
 npm start
 ```
 
+### Railway 배포
+자세한 배포 가이드는 [RAILWAY_DEPLOY.md](./RAILWAY_DEPLOY.md) 참조
+
+**간단 배포:**
+1. Railway 대시보드에서 GitHub 레포 연결
+2. Root Directory: `/server` 설정
+3. 환경 변수 설정:
+   - `NODE_ENV=production`
+   - `CLIENT_URL=https://your-client-domain.vercel.app`
+4. Deploy 클릭
+
 ## 📚 참조 문서
 
 모든 설계는 `docs/planning/` 문서를 기반으로 작성되었습니다:

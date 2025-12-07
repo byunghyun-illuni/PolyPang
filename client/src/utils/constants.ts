@@ -8,16 +8,16 @@ export const GAME_CONSTANTS = {
   // Arena
   ARENA_RADIUS_RATIO: 0.38, // ArenaView 대비 반지름 비율
 
-  // Paddle
-  PADDLE_LENGTH_RATIO: 0.3, // α: Side 길이 대비 패들 길이
+  // Paddle (기본값, N≥6일 때)
+  PADDLE_LENGTH_RATIO: 0.2, // α: Side 길이 대비 패들 길이
   PADDLE_MOVE_RANGE: 0.6, // β: Side 중심 기준 이동 범위
-  PADDLE_MAX_SPEED: 0.8, // 최대 이동 속도 (Side 길이/초)
-  PADDLE_ACCELERATION: 2.0, // 가속도
-  PADDLE_DECELERATION: 0.9, // 감속 계수
+  PADDLE_MAX_SPEED: 2.5, // 최대 이동 속도 (Side 길이/초)
+  PADDLE_ACCELERATION: 6.0, // 가속도
+  PADDLE_DECELERATION: 0.85, // 감속 계수
 
   // Ball
   BALL_INITIAL_SPEED: 0.3, // 초기 속도 (R/초)
-  BALL_SPEED_INCREMENT: 1.05, // HIT마다 5% 증가
+  BALL_SPEED_INCREMENT: 1.02, // HIT마다 2% 증가 (1.05에서 감소)
   BALL_RADIUS_RATIO: 0.03, // Arena 대비 공 크기
 
   // Timing
@@ -53,3 +53,62 @@ export const ENV = {
   IS_DEV: import.meta.env.DEV,
   IS_PROD: import.meta.env.PROD,
 } as const
+
+/**
+ * N-adaptive 패들 비율 계산 (PolyPang 밸런싱)
+ *
+ * 철학:
+ * - N이 작을수록 Side가 길어짐 → 패들을 크게, 이동범위를 넓게
+ * - N이 클수록 Side가 짧아짐 → 패들을 작게, 이동범위를 좁게
+ *
+ * @param n - 플레이어 수 (2~8)
+ * @returns { alpha: 패들 길이 비율, beta: 이동 범위 비율, renderN: 렌더링용 N }
+ */
+export function getPaddleRatios(n: number): {
+  alpha: number
+  beta: number
+  renderN: number
+} {
+  // N=2: 정사각형(N=4)으로 렌더링하되 2명만 배치 (위/아래)
+  if (n === 2) {
+    return {
+      alpha: 0.5, // 매우 큰 패들 (50%)
+      beta: 0.9, // 거의 전체 이동 (90%)
+      renderN: 4, // 정사각형으로 렌더링
+    }
+  }
+
+  // N=3: 정삼각형, 큰 패들
+  if (n === 3) {
+    return {
+      alpha: 0.4, // 40% 패들
+      beta: 0.85, // 85% 이동범위
+      renderN: 3,
+    }
+  }
+
+  // N=4: 정사각형
+  if (n === 4) {
+    return {
+      alpha: 0.3, // 30% 패들
+      beta: 0.75, // 75% 이동범위
+      renderN: 4,
+    }
+  }
+
+  // N=5: 정오각형
+  if (n === 5) {
+    return {
+      alpha: 0.25, // 25% 패들
+      beta: 0.7, // 70% 이동범위
+      renderN: 5,
+    }
+  }
+
+  // N≥6: 기본값
+  return {
+    alpha: GAME_CONSTANTS.PADDLE_LENGTH_RATIO, // 0.2 (20%)
+    beta: GAME_CONSTANTS.PADDLE_MOVE_RANGE, // 0.6 (60%)
+    renderN: n,
+  }
+}

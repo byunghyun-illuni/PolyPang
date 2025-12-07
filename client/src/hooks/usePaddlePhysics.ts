@@ -31,6 +31,7 @@ export function usePaddlePhysics(options: UsePaddlePhysicsOptions) {
 
   const [position, setPosition] = useState(initialPosition)
   const velocityRef = useRef(0) // 현재 속도
+  const positionRef = useRef(initialPosition) // 현재 위치 ref
 
   useEffect(() => {
     let animationFrameId: number
@@ -62,19 +63,18 @@ export function usePaddlePhysics(options: UsePaddlePhysicsOptions) {
       )
 
       // 위치 업데이트
-      setPosition((prev) => {
-        const newPosition = prev + velocityRef.current * deltaTime
+      const newPosition = positionRef.current + velocityRef.current * deltaTime
 
-        // 범위 제한 (-1 ~ 1)
-        const clamped = Math.max(-1, Math.min(1, newPosition))
+      // 범위 제한 (-1 ~ 1)
+      const clamped = Math.max(-1, Math.min(1, newPosition))
 
-        // 벽에 닿으면 속도 0
-        if (clamped !== newPosition) {
-          velocityRef.current = 0
-        }
+      // 벽에 닿으면 속도 0
+      if (clamped !== newPosition) {
+        velocityRef.current = 0
+      }
 
-        return clamped
-      })
+      positionRef.current = clamped
+      setPosition(clamped)
 
       animationFrameId = requestAnimationFrame(update)
     }

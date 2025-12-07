@@ -11,7 +11,7 @@
  * 출처: docs/planning/01_PRD_게임기획.md
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 
 export type GameStatus = 'LOBBY' | 'COUNTDOWN' | 'PLAYING' | 'FINISHED'
 export type PlayerStatus = 'ALIVE' | 'OUT' | 'SPECTATOR'
@@ -38,6 +38,11 @@ export function useGameState(options: UseGameStateOptions) {
     initialPlayers.map((p) => ({ ...p, status: 'ALIVE' as PlayerStatus }))
   )
   const [winner, setWinner] = useState<Player | null>(null)
+
+  // initialPlayers 변경 시 플레이어 리스트 업데이트
+  useEffect(() => {
+    setPlayers(initialPlayers.map((p) => ({ ...p, status: 'ALIVE' as PlayerStatus })))
+  }, [initialPlayers])
 
   // Alive 플레이어만 필터링
   const alivePlayers = players.filter((p) => p.status === 'ALIVE')

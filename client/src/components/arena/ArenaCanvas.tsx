@@ -20,11 +20,17 @@ interface ArenaCanvasProps {
 export default function ArenaCanvas({ onRender, className = '' }: ArenaCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const appRef = useRef<Application | null>(null)
+  const onRenderRef = useRef(onRender)
 
+  // onRender 참조 업데이트
+  useEffect(() => {
+    onRenderRef.current = onRender
+  }, [onRender])
+
+  // PixiJS Application 초기화 (한 번만)
   useEffect(() => {
     if (!canvasRef.current) return
 
-    // PixiJS Application 초기화
     const app = new Application({
       width: canvasRef.current.clientWidth,
       height: canvasRef.current.clientHeight,
@@ -37,9 +43,6 @@ export default function ArenaCanvas({ onRender, className = '' }: ArenaCanvasPro
     canvasRef.current.appendChild(app.view as HTMLCanvasElement)
     appRef.current = app
 
-    // 렌더링 콜백 실행
-    onRender(app)
-
     // 리사이즈 핸들러
     const handleResize = () => {
       if (app && canvasRef.current) {
@@ -47,8 +50,6 @@ export default function ArenaCanvas({ onRender, className = '' }: ArenaCanvasPro
           canvasRef.current.clientWidth,
           canvasRef.current.clientHeight
         )
-        // 렌더링 갱신
-        onRender(app)
       }
     }
 
@@ -61,7 +62,37 @@ export default function ArenaCanvas({ onRender, className = '' }: ArenaCanvasPro
         app.destroy(true, { children: true })
       }
     }
-  }, [onRender])
+  }, [])
+
+  // 60fps 렌더링 루프
+  useEffect(() => {
+    if (!appRef.current) return
+
+    let animationFrameId: number
+    let lastTime = Date.now()
+    const targetFPS = 60
+    const targetFrameTime = 1000 / targetFPS
+
+    const ticker = () => {
+      const now = Date.now()
+      const delta = now - lastTime
+
+      if (delta >= targetFrameTime) {
+        lastTime = now - (delta % targetFrameTime)
+        if (appRef.current) {
+          onRenderRef.current(appRef.current)
+        }
+      }
+
+      animationFrameId = requestAnimationFrame(ticker)
+    }
+
+    animationFrameId = requestAnimationFrame(ticker)
+
+    return () => {
+      cancelAnimationFrame(animationFrameId)
+    }
+  }, [])
 
   return (
     <div

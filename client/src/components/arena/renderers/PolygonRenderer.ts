@@ -13,6 +13,7 @@ import {
   getSideCenter,
 } from '@/physics/geometry'
 import { getPlayerColor } from '@/utils/colors'
+import { getPaddleRatios } from '@/utils/constants'
 
 interface PolygonRendererOptions {
   /** 플레이어 수 (변의 개수) */
@@ -47,14 +48,17 @@ export class PolygonRenderer {
 
     const { n, radius, players, myPlayerIndex } = this.options
 
-    // 정N각형 외곽선 그리기
-    this.drawPolygon(n, radius)
+    // N=2일 때는 정사각형(N=4)으로 렌더링
+    const { renderN } = getPaddleRatios(n)
 
-    // Side별 색상 표시
-    this.drawSides(n, radius, players, myPlayerIndex)
+    // 정N각형 외곽선 그리기 (renderN 사용)
+    this.drawPolygon(renderN, radius)
 
-    // 플레이어 라벨 그리기
-    this.drawLabels(n, radius, players, myPlayerIndex)
+    // Side별 색상 표시 (실제 플레이어 수: n, 렌더링 수: renderN)
+    this.drawSides(n, renderN, radius, players, myPlayerIndex)
+
+    // 플레이어 라벨 그리기 (실제 플레이어 수: n, 렌더링 수: renderN)
+    this.drawLabels(n, renderN, radius, players, myPlayerIndex)
   }
 
   /**
@@ -74,18 +78,25 @@ export class PolygonRenderer {
 
   /**
    * Side별 색상 띠 그리기
+   * @param actualN - 실제 플레이어 수
+   * @param renderN - 렌더링용 다각형 변의 수
    */
   private drawSides(
-    n: number,
+    actualN: number,
+    renderN: number,
     radius: number,
     _players: Array<{ nickname: string; userId: string }>,
     myPlayerIndex: number
   ) {
-    const vertices = getAllVertices(n, radius)
+    const vertices = getAllVertices(renderN, radius)
 
-    for (let i = 0; i < n; i++) {
-      const v1 = vertices[i]
-      const v2 = vertices[(i + 1) % n]
+    // N=2일 때는 Side 0(상단), Side 2(하단)만 플레이어 배치
+    const playerSideIndices = actualN === 2 ? [0, 2] : Array.from({ length: actualN }, (_, i) => i)
+
+    for (let i = 0; i < actualN; i++) {
+      const sideIndex = playerSideIndices[i]
+      const v1 = vertices[sideIndex]
+      const v2 = vertices[(sideIndex + 1) % renderN]
 
       // Side 중앙 60% 구간에만 색상 띠
       const center = {
@@ -119,15 +130,22 @@ export class PolygonRenderer {
 
   /**
    * 플레이어 라벨 그리기
+   * @param actualN - 실제 플레이어 수
+   * @param renderN - 렌더링용 다각형 변의 수
    */
   private drawLabels(
-    n: number,
+    actualN: number,
+    renderN: number,
     radius: number,
     players: Array<{ nickname: string; userId: string }>,
     myPlayerIndex: number
   ) {
-    for (let i = 0; i < n; i++) {
-      const center = getSideCenter(i, n, radius * 1.15) // 바깥쪽으로
+    // N=2일 때는 Side 0(상단), Side 2(하단)만 플레이어 배치
+    const playerSideIndices = actualN === 2 ? [0, 2] : Array.from({ length: actualN }, (_, i) => i)
+
+    for (let i = 0; i < actualN; i++) {
+      const sideIndex = playerSideIndices[i]
+      const center = getSideCenter(sideIndex, renderN, radius * 1.15) // 바깥쪽으로
       const isMe = i === myPlayerIndex
 
       const text = isMe ? `${players[i]?.nickname || `P${i + 1}`} (YOU)` : players[i]?.nickname || `P${i + 1}`

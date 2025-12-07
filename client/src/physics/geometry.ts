@@ -38,18 +38,21 @@ export function getSideAngle(i: number, n: number): number {
 /**
  * 정N각형의 i번째 변의 중심 좌표 계산
  *
+ * 중요: 이 함수는 변의 실제 중점(양 끝점의 중간)을 반환합니다.
+ * 외접원 중심에서 변 방향으로의 거리가 아닙니다!
+ *
  * @param i - Side 인덱스
  * @param n - 플레이어 수
- * @param radius - 반지름
- * @returns 중심 좌표 (x, y)
+ * @param radius - 외접원 반지름
+ * @returns 변의 중심 좌표 (x, y)
  */
 export function getSideCenter(i: number, n: number, radius: number): Vector2D {
-  const angle = getSideAngle(i, n)
-  const rad = degToRad(angle)
+  // 변의 양 끝점을 구해서 중점 계산
+  const [v1, v2] = getSideVertices(i, n, radius)
 
   return {
-    x: radius * Math.cos(rad),
-    y: radius * Math.sin(rad),
+    x: (v1.x + v2.x) / 2,
+    y: (v1.y + v2.y) / 2,
   }
 }
 

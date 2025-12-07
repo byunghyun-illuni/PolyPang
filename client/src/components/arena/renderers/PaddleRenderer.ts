@@ -22,7 +22,7 @@ import {
   getSideLength,
 } from '@/physics/geometry'
 import { add, multiply } from '@/physics/vector'
-import { GAME_CONSTANTS } from '@/utils/constants'
+import { getPaddleRatios } from '@/utils/constants'
 
 interface PaddleData {
   /** Side 인덱스 */
@@ -64,20 +64,27 @@ export class PaddleRenderer {
 
     const { n, radius, paddles } = this.options
 
-    // Side 길이 계산
-    const sideLength = getSideLength(n, radius)
+    // N-adaptive 패들 비율 가져오기
+    const { alpha, beta, renderN } = getPaddleRatios(n)
 
-    // 패들 길이 = Side 길이 × α (0.3)
-    const paddleLength = sideLength * GAME_CONSTANTS.PADDLE_LENGTH_RATIO
+    // N=2일 때는 Side 0(상단), Side 2(하단)만 플레이어 배치
+    const playerSideIndices = n === 2 ? [0, 2] : Array.from({ length: n }, (_, i) => i)
 
-    // 패들 이동 범위 = Side 길이 × β (0.6)
-    const moveRange = sideLength * GAME_CONSTANTS.PADDLE_MOVE_RANGE
+    // Side 길이 계산 (renderN 기준)
+    const sideLength = getSideLength(renderN, radius)
+
+    // 패들 길이 = Side 길이 × α (N에 따라 동적)
+    const paddleLength = sideLength * alpha
+
+    // 패들 이동 범위 = Side 길이 × β (N에 따라 동적)
+    const moveRange = sideLength * beta
 
     // 각 패들 그리기
-    paddles.forEach((paddle) => {
+    paddles.forEach((paddle, i) => {
+      const actualSideIndex = playerSideIndices[i]
       this.drawPaddle(
-        paddle,
-        n,
+        { ...paddle, sideIndex: actualSideIndex },
+        renderN,
         radius,
         paddleLength,
         moveRange

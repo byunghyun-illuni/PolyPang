@@ -18,6 +18,8 @@ interface OutZoneRendererOptions {
   radius: number
   /** OUT 존 두께 (Side 뒤쪽으로 확장) */
   thickness?: number
+  /** OUT된 Side 인덱스 (강조 표시) */
+  outSideIndex?: number
 }
 
 export class OutZoneRenderer {
@@ -38,7 +40,7 @@ export class OutZoneRenderer {
   private render() {
     this.graphics.clear()
 
-    const { n, radius, thickness = 30 } = this.options
+    const { n, radius, thickness = 30, outSideIndex } = this.options
 
     // 각 Side 뒤에 OUT 존 그리기
     for (let i = 0; i < n; i++) {
@@ -61,8 +63,13 @@ export class OutZoneRenderer {
         y: v2.y + normalY * thickness,
       }
 
+      // OUT된 Side는 강조 표시
+      const isOutSide = outSideIndex === i
+      const alpha = isOutSide ? 0.6 : 0.15
+      const color = isOutSide ? 0xff3333 : 0xff0000
+
       // 빨간색 반투명 사각형
-      this.graphics.beginFill(0xff0000, 0.15)
+      this.graphics.beginFill(color, alpha)
       this.graphics.moveTo(v1.x, v1.y)
       this.graphics.lineTo(v2.x, v2.y)
       this.graphics.lineTo(outerV2.x, outerV2.y)
@@ -70,8 +77,10 @@ export class OutZoneRenderer {
       this.graphics.closePath()
       this.graphics.endFill()
 
-      // OUT 존 경계선 (점선)
-      this.graphics.lineStyle(1, 0xff0000, 0.3)
+      // OUT 존 경계선
+      const borderAlpha = isOutSide ? 0.8 : 0.3
+      const borderWidth = isOutSide ? 2 : 1
+      this.graphics.lineStyle(borderWidth, color, borderAlpha)
       this.graphics.moveTo(outerV1.x, outerV1.y)
       this.graphics.lineTo(outerV2.x, outerV2.y)
     }

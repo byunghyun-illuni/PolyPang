@@ -5,9 +5,10 @@
  * - 정N각형 렌더링 테스트
  * - 내 Side 하단 고정 회전 로직 검증
  * - N=2,3,5,8 모두 테스트
+ * - 패들 및 공 물리 시뮬레이션
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useMemo } from 'react'
 import { Application, Container } from 'pixi.js'
 import ArenaCanvas from '@/components/arena/ArenaCanvas'
 import { PolygonRenderer } from '@/components/arena/renderers/PolygonRenderer'
@@ -24,7 +25,18 @@ import { useGameState } from '@/hooks/useGameState'
 
 export default function ArenaTestScreen() {
   const [initialPlayerCount, setInitialPlayerCount] = useState(5) // 초기 플레이어 수
-  const [arenaRadius, setArenaRadius] = useState(150) // Arena 반지름
+  const [lastOutSide, setLastOutSide] = useState<number | null>(null) // 마지막 OUT Side
+  const [isPaused, setIsPaused] = useState(false) // 게임 일시정지
+
+  // 플레이어 목록 (initialPlayerCount 변경 시마다 재생성)
+  const initialPlayers = useMemo(
+    () =>
+      Array.from({ length: initialPlayerCount }, (_, i) => ({
+        id: `player-${i}`,
+        nickname: `Player${i + 1}`,
+      })),
+    [initialPlayerCount]
+  )
 
   // 게임 상태 관리
   const {
@@ -37,12 +49,16 @@ export default function ArenaTestScreen() {
     startGame,
     restartGame,
   } = useGameState({
-    initialPlayers: Array.from({ length: initialPlayerCount }, (_, i) => ({
-      id: `player-${i}`,
-      nickname: `Player${i + 1}`,
-    })),
+    initialPlayers,
     myPlayerId: 'player-0', // 항상 Player1이 나
   })
+
+  // 렌더러 참조 (한 번만 생성)
+  const arenaContainerRef = useRef<Container | null>(null)
+  const polygonRendererRef = useRef<PolygonRenderer | null>(null)
+  const outZoneRendererRef = useRef<OutZoneRenderer | null>(null)
+  const paddleRendererRef = useRef<PaddleRenderer | null>(null)
+  const ballRendererRef = useRef<BallRenderer | null>(null)
 
   // 입력 처리
   const { direction, isTouching, handleTouchStart, handleTouchEnd } =
@@ -54,108 +70,246 @@ export default function ArenaTestScreen() {
     initialPosition: 0,
   })
 
-  // 다른 플레이어 패들 (임시로 고정)
-  const otherPaddlePositions = Array(8).fill(0)
+  // 패들 정보 (useMemo로 안정화)
+  const paddleInfos = useMemo(
+    () =>
+      Array.from({ length: playerCount }, (_, i) => ({
+        sideIndex: i,
+        position: i === myPlayerIndex ? myPaddlePosition : 0,
+      })),
+    [playerCount, myPlayerIndex, myPaddlePosition]
+  )
 
-  // 패들 정보
-  const paddleInfos = Array.from({ length: playerCount }, (_, i) => ({
-    sideIndex: i,
-    position: i === myPlayerIndex ? myPaddlePosition : otherPaddlePositions[i] || 0,
-  }))
-
-  // 공 물리
+  // 공 물리 (arenaRadius는 동적으로 계산하므로 초기값만 전달)
   const {
     position: ballPosition,
     trail: ballTrail,
     hitEffectActive,
+    reset: resetBall,
   } = useBallPhysics({
     playerCount,
-    arenaRadius,
+    arenaRadius: 150, // 초기값 (실제 값은 렌더링 시 계산)
     paddles: paddleInfos,
     initialPosition: { x: 0, y: 0 },
-    initialVelocity: { x: 30, y: 25 }, // 속도 절반으로 감소
-    onPlayerOut: handlePlayerOut,
+    initialVelocity: { x: 120, y: 100 }, // 속도 4배 증가
+    paused: isPaused, // 일시정지 상태 전달
+    onPlayerOut: (sideIndex) => {
+      setLastOutSide(sideIndex)
+      setIsPaused(true) // 게임 일시정지
+      handlePlayerOut(sideIndex)
+    },
     onPaddleHit: (sideIndex) => {
       console.log(`HIT on Side ${sideIndex}`)
     },
   })
 
+  // 게임 재시작 시 렌더러 초기화
+  const handleRestart = useCallback(() => {
+    // 기존 렌더러들 완전히 제거
+    if (polygonRendererRef.current) {
+      polygonRendererRef.current.destroy()
+      polygonRendererRef.current = null
+    }
+    if (outZoneRendererRef.current) {
+      outZoneRendererRef.current.destroy()
+      outZoneRendererRef.current = null
+    }
+    if (paddleRendererRef.current) {
+      paddleRendererRef.current.destroy()
+      paddleRendererRef.current = null
+    }
+    if (ballRendererRef.current) {
+      ballRendererRef.current.destroy()
+      ballRendererRef.current = null
+    }
+    if (arenaContainerRef.current) {
+      arenaContainerRef.current.removeChildren()
+      arenaContainerRef.current.destroy()
+      arenaContainerRef.current = null
+    }
+
+    setLastOutSide(null)
+    setIsPaused(false) // 일시정지 해제
+    resetBall() // 공 초기화
+    restartGame()
+  }, [restartGame, resetBall])
+
   const handleRender = useCallback(
     (app: Application) => {
-      // 기존 컨테이너 제거
-      app.stage.removeChildren()
+      // 첫 렌더링: 컨테이너와 렌더러 생성
+      if (!arenaContainerRef.current) {
+        const arenaContainer = new Container()
+        app.stage.addChild(arenaContainer)
+        arenaContainerRef.current = arenaContainer
 
-      // Arena 컨테이너
-      const arenaContainer = new Container()
-      app.stage.addChild(arenaContainer)
+        // 화면 중앙 배치
+        arenaContainer.x = app.screen.width / 2
+        arenaContainer.y = app.screen.height / 2
 
-      // 화면 중앙 배치
-      arenaContainer.x = app.screen.width / 2
-      arenaContainer.y = app.screen.height / 2
+        // Arena 반지름 계산
+        const radius = Math.min(app.screen.width, app.screen.height) * 0.38
 
-      // Arena 반지름 계산 (화면의 38%)
-      const radius = Math.min(app.screen.width, app.screen.height) * 0.38
+        // 정N각형 렌더러 생성
+        const polygonRenderer = new PolygonRenderer({
+          n: playerCount,
+          radius,
+          players: alivePlayers.map((p) => ({
+            userId: p.id,
+            nickname: p.nickname,
+          })),
+          myPlayerIndex,
+        })
+        arenaContainer.addChild(polygonRenderer.getContainer())
+        polygonRendererRef.current = polygonRenderer
 
-      // arenaRadius 업데이트
-      setArenaRadius(radius)
+        // OUT 존 렌더러 생성
+        const outZoneRenderer = new OutZoneRenderer({
+          n: playerCount,
+          radius,
+          thickness: 30,
+          outSideIndex: lastOutSide ?? undefined,
+        })
+        arenaContainer.addChild(outZoneRenderer.getContainer())
+        outZoneRendererRef.current = outZoneRenderer
 
-      // 정N각형 렌더러 (매번 새로 생성)
-      const polygonRenderer = new PolygonRenderer({
-        n: playerCount,
-        radius,
-        players: alivePlayers.map((p) => ({
-          userId: p.id,
-          nickname: p.nickname,
-        })),
-        myPlayerIndex,
-      })
+        // 패들 렌더러 생성
+        const paddleData = Array.from({ length: playerCount }, (_, i) => ({
+          sideIndex: i,
+          position: i === myPlayerIndex ? myPaddlePosition : 0,
+          color: getPlayerColor(i),
+          isMe: i === myPlayerIndex,
+        }))
+        const paddleRenderer = new PaddleRenderer({
+          n: playerCount,
+          radius,
+          paddles: paddleData,
+        })
+        arenaContainer.addChild(paddleRenderer.getContainer())
+        paddleRendererRef.current = paddleRenderer
 
-      arenaContainer.addChild(polygonRenderer.getContainer())
+        // 공 렌더러 생성
+        const ballRenderer = new BallRenderer({
+          position: ballPosition,
+          arenaRadius: radius,
+          trail: ballTrail,
+          hitEffectActive,
+        })
+        arenaContainer.addChild(ballRenderer.getContainer())
+        ballRendererRef.current = ballRenderer
 
-      // OUT 존 렌더러 (매번 새로 생성)
-      const outZoneRenderer = new OutZoneRenderer({
-        n: playerCount,
-        radius,
-        thickness: 30,
-      })
+        // 회전 적용
+        const rotation = getArenaRotationForMyPlayer(myPlayerIndex, playerCount)
+        arenaContainer.rotation = degToRad(rotation)
 
-      arenaContainer.addChild(outZoneRenderer.getContainer())
+        console.log(
+          `[Arena] 초기화 N=${playerCount}, myIndex=${myPlayerIndex}, rotation=${rotation.toFixed(1)}°`
+        )
+      } else {
+        // 이후 렌더링: 렌더러 업데이트만
+        const arenaContainer = arenaContainerRef.current
+        const radius = Math.min(app.screen.width, app.screen.height) * 0.38
 
-      // 패들 렌더러 (매번 새로 생성)
-      const paddleData = Array.from({ length: playerCount }, (_, i) => ({
-        sideIndex: i,
-        position: i === myPlayerIndex ? myPaddlePosition : otherPaddlePositions[i] || 0,
-        color: getPlayerColor(i),
-        isMe: i === myPlayerIndex,
-      }))
+        // 화면 중앙 재배치 (리사이즈 대응)
+        arenaContainer.x = app.screen.width / 2
+        arenaContainer.y = app.screen.height / 2
 
-      const paddleRenderer = new PaddleRenderer({
-        n: playerCount,
-        radius,
-        paddles: paddleData,
-      })
+        // OUT 존 업데이트
+        if (outZoneRendererRef.current) {
+          outZoneRendererRef.current.update({
+            outSideIndex: lastOutSide ?? undefined,
+            radius,
+          })
+        }
 
-      arenaContainer.addChild(paddleRenderer.getContainer())
+        // 패들 업데이트
+        if (paddleRendererRef.current) {
+          const paddleData = Array.from({ length: playerCount }, (_, i) => ({
+            sideIndex: i,
+            position: i === myPlayerIndex ? myPaddlePosition : 0,
+            color: getPlayerColor(i),
+            isMe: i === myPlayerIndex,
+          }))
+          paddleRendererRef.current.update({ paddles: paddleData, radius })
+        }
 
-      // 공 렌더러 (매번 새로 생성)
-      const ballRenderer = new BallRenderer({
-        position: ballPosition,
-        arenaRadius: radius,
-        trail: ballTrail,
-        hitEffectActive,
-      })
+        // 공 업데이트
+        if (ballRendererRef.current) {
+          ballRendererRef.current.update({
+            position: ballPosition,
+            arenaRadius: radius,
+            trail: ballTrail,
+            hitEffectActive,
+          })
+        }
 
-      arenaContainer.addChild(ballRenderer.getContainer())
+        // playerCount 변경 시 전체 재생성 필요
+        if (
+          polygonRendererRef.current &&
+          (polygonRendererRef.current as any).options.n !== playerCount
+        ) {
+          // 모든 렌더러 제거
+          polygonRendererRef.current.destroy()
+          outZoneRendererRef.current?.destroy()
+          paddleRendererRef.current?.destroy()
+          ballRendererRef.current?.destroy()
+          arenaContainer.removeChildren()
 
-      // 🌟 핵심: 내 Side 하단 고정 회전
-      const rotation = getArenaRotationForMyPlayer(myPlayerIndex, playerCount)
-      arenaContainer.rotation = degToRad(rotation)
+          // 재생성
+          const polygonRenderer = new PolygonRenderer({
+            n: playerCount,
+            radius,
+            players: alivePlayers.map((p) => ({
+              userId: p.id,
+              nickname: p.nickname,
+            })),
+            myPlayerIndex,
+          })
+          arenaContainer.addChild(polygonRenderer.getContainer())
+          polygonRendererRef.current = polygonRenderer
 
-      console.log(
-        `[Arena] N=${playerCount}, myIndex=${myPlayerIndex}, rotation=${rotation.toFixed(1)}°`
-      )
+          const outZoneRenderer = new OutZoneRenderer({
+            n: playerCount,
+            radius,
+            thickness: 30,
+            outSideIndex: lastOutSide ?? undefined,
+          })
+          arenaContainer.addChild(outZoneRenderer.getContainer())
+          outZoneRendererRef.current = outZoneRenderer
+
+          const paddleData = Array.from({ length: playerCount }, (_, i) => ({
+            sideIndex: i,
+            position: i === myPlayerIndex ? myPaddlePosition : 0,
+            color: getPlayerColor(i),
+            isMe: i === myPlayerIndex,
+          }))
+          const paddleRenderer = new PaddleRenderer({
+            n: playerCount,
+            radius,
+            paddles: paddleData,
+          })
+          arenaContainer.addChild(paddleRenderer.getContainer())
+          paddleRendererRef.current = paddleRenderer
+
+          const ballRenderer = new BallRenderer({
+            position: ballPosition,
+            arenaRadius: radius,
+            trail: ballTrail,
+            hitEffectActive,
+          })
+          arenaContainer.addChild(ballRenderer.getContainer())
+          ballRendererRef.current = ballRenderer
+
+          // 회전 재적용
+          const rotation = getArenaRotationForMyPlayer(myPlayerIndex, playerCount)
+          arenaContainer.rotation = degToRad(rotation)
+
+          console.log(
+            `[Arena] 재생성 N=${playerCount}, myIndex=${myPlayerIndex}, rotation=${rotation.toFixed(1)}°`
+          )
+        }
+      }
     },
-    [playerCount, myPlayerIndex, alivePlayers, myPaddlePosition, otherPaddlePositions, ballPosition, ballTrail, hitEffectActive]
+    [playerCount, myPlayerIndex, alivePlayers, myPaddlePosition, ballPosition, ballTrail, hitEffectActive, lastOutSide]
   )
 
   return (
@@ -170,7 +324,7 @@ export default function ArenaTestScreen() {
         </div>
 
         {/* 게임 상태 */}
-        <div className="flex items-center justify-center gap-4">
+        <div className="flex items-center justify-center gap-4 flex-wrap">
           <div className="text-sm">
             상태: <span className="font-bold text-purple-400">{gameStatus}</span>
           </div>
@@ -180,6 +334,13 @@ export default function ArenaTestScreen() {
           {winner && (
             <div className="text-sm">
               승자: <span className="font-bold text-yellow-400">{winner.nickname}</span>
+            </div>
+          )}
+          {lastOutSide !== null && (
+            <div className="text-base animate-pulse bg-red-600 px-4 py-2 rounded-lg">
+              <span className="font-bold text-white">
+                🚨 OUT! Side {lastOutSide} ({alivePlayers.find((_, i) => i === lastOutSide)?.nickname || `Player${lastOutSide + 1}`})
+              </span>
             </div>
           )}
         </div>
@@ -194,8 +355,11 @@ export default function ArenaTestScreen() {
                   <button
                     key={n}
                     onClick={() => {
-                      setInitialPlayerCount(n)
-                      restartGame()
+                      if (n !== initialPlayerCount) {
+                        handleRestart()
+                        // 렌더러 초기화 후 플레이어 수 변경
+                        setTimeout(() => setInitialPlayerCount(n), 50)
+                      }
                     }}
                     className={`px-4 py-2 rounded ${
                       initialPlayerCount === n
@@ -215,12 +379,12 @@ export default function ArenaTestScreen() {
               </button>
             </>
           )}
-          {gameStatus === 'FINISHED' && (
+          {(gameStatus === 'FINISHED' || gameStatus === 'PLAYING') && (
             <button
-              onClick={restartGame}
-              className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              onClick={handleRestart}
+              className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-semibold"
             >
-              다시 시작
+              🔄 다시 시작
             </button>
           )}
         </div>
