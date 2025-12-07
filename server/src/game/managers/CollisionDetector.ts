@@ -98,19 +98,32 @@ export class CollisionDetector {
     };
 
     // 공이 패들과 충돌했는지 확인
-    const distanceToPaddleCenter = Math.sqrt(
-      (ball.position.x - paddleCenterWorld.x) ** 2 +
-        (ball.position.y - paddleCenterWorld.y) ** 2
-    );
+    // 패들 탄젠트 방향으로의 상대 위치 계산
+    const ballToPaddleCenter = {
+      x: ball.position.x - paddleCenterWorld.x,
+      y: ball.position.y - paddleCenterWorld.y,
+    };
 
-    if (distanceToPaddleCenter <= paddleHalfLength + ball.radius) {
+    // 패들 탄젠트 방향으로의 투영 (패들 어디를 맞췄는지)
+    const projectionOnTangent = dot(ballToPaddleCenter, side.tangent);
+
+    // 패들 법선 방향으로의 거리
+    const distanceToLine = Math.abs(dot(ballToPaddleCenter, side.normal));
+
+    if (Math.abs(projectionOnTangent) <= paddleHalfLength && distanceToLine <= ball.radius + 4) {
       // PADDLE_HIT
+      // paddleOffset: -1(왼쪽) ~ 0(중앙) ~ 1(오른쪽)
+      const paddleOffset = paddleHalfLength > 0
+        ? -projectionOnTangent / paddleHalfLength  // 부호 반전 (Arena 회전 고려)
+        : 0;
+
       return {
         type: CollisionType.PADDLE_HIT,
         playerId: side.playerId,
         sideIndex: side.index,
         hitPoint: { ...ball.position },
         normal: { ...side.normal },
+        paddleOffset: Math.max(-1, Math.min(1, paddleOffset)),
       };
     }
 

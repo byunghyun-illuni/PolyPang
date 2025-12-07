@@ -12,8 +12,8 @@
 import { GameState, Ball, Paddle } from '../../types/game.types';
 import { CollisionDetector } from './CollisionDetector';
 import { CollisionType, CollisionResult } from '../../types';
-import { reflect, magnitude } from '../../utils/geometry';
-import { GAME_CONSTANTS } from '../../utils/constants';
+import { reflect, magnitude, normalize } from '../../utils/geometry';
+import { GAME_CONSTANTS, getPaddleRatios } from '../../utils/constants';
 import { PaddleDirection } from '../../types/enums';
 
 export class PhysicsEngine {
@@ -130,8 +130,9 @@ export class PhysicsEngine {
   /**
    * 패들 히트 처리
    *
-   * - 반사
-   * - 속도 5% 증가
+   * - 반사 (패들 위치에 따른 각도 조정)
+   * - 첫 HIT: 정상 속도로 점프
+   * - 이후 HIT: 속도 8% 증가
    * - hitCount 증가
    *
    * @param ball - 공
@@ -141,24 +142,40 @@ export class PhysicsEngine {
     ball: Ball,
     collision: Extract<CollisionResult, { type: CollisionType.PADDLE_HIT }>
   ): void {
-    // 반사
-    const reflectedVelocity = reflect(
+    // 패들 위치에 따른 각도 조정 (paddleOffset: -1 ~ 1)
+    const paddleOffset = collision.paddleOffset || 0;
+    const deflectStrength = 0.7;
+
+    // 기본 반사
+    const reflected = reflect(
       { x: ball.velocity.vx, y: ball.velocity.vy },
       collision.normal
     );
 
-    ball.velocity.vx = reflectedVelocity.x;
-    ball.velocity.vy = reflectedVelocity.y;
+    // tangent 방향 (시계 방향 90도 회전)
+    const tangent = { x: collision.normal.y, y: -collision.normal.x };
 
-    // 속도 5% 증가
-    ball.speed *= GAME_CONSTANTS.BALL_SPEED_INCREMENT;
-    const speed = ball.speed;
-    const currentSpeed = magnitude({ x: ball.velocity.vx, y: ball.velocity.vy });
+    // 반사 방향에 패들 오프셋 적용
+    const reflectedDir = normalize(reflected);
+    const deflection = paddleOffset * deflectStrength;
+    const newDir = normalize({
+      x: reflectedDir.x + tangent.x * deflection,
+      y: reflectedDir.y + tangent.y * deflection,
+    });
 
-    if (currentSpeed > 0) {
-      ball.velocity.vx = (ball.velocity.vx / currentSpeed) * speed;
-      ball.velocity.vy = (ball.velocity.vy / currentSpeed) * speed;
+    // 첫 HIT 처리
+    let newSpeed: number;
+    if (ball.hitCount === 0) {
+      // 첫 HIT: 정상 속도로 점프
+      newSpeed = GAME_CONSTANTS.BALL_NORMAL_SPEED;
+    } else {
+      // 이후 HIT: 속도 8% 증가
+      newSpeed = ball.speed * GAME_CONSTANTS.BALL_SPEED_INCREMENT;
     }
+
+    ball.speed = newSpeed;
+    ball.velocity.vx = newDir.x * newSpeed;
+    ball.velocity.vy = newDir.y * newSpeed;
 
     // 히트 카운트 증가
     ball.hitCount++;
@@ -246,17 +263,20 @@ export class PhysicsEngine {
    * @param playerId - 플레이어 ID
    * @param sideIndex - Side 인덱스
    * @param sideLength - Side 길이
+   * @param n - 플레이어 수
    * @returns Paddle
    */
-  initPaddle(playerId: string, sideIndex: number, sideLength: number): Paddle {
+  initPaddle(playerId: string, sideIndex: number, sideLength: number, n: number): Paddle {
+    const { alpha, beta } = getPaddleRatios(n);
+
     return {
       playerId,
       sideIndex,
       position: 0, // 중앙
       velocity: 0,
       direction: PaddleDirection.STOP,
-      length: sideLength * GAME_CONSTANTS.PADDLE_LENGTH_RATIO,
-      moveRange: GAME_CONSTANTS.PADDLE_MOVE_RANGE,
+      length: sideLength * alpha,
+      moveRange: beta,
     };
   }
 }

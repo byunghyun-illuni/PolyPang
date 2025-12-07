@@ -8,16 +8,18 @@ export const GAME_CONSTANTS = {
   ARENA_RADIUS_RATIO: 0.38,        // ArenaView 대비 반지름 비율
   ARENA_BASE_RADIUS: 100,          // 기본 반지름 (서버 기준, 클라는 스케일링)
 
-  // Paddle
-  PADDLE_LENGTH_RATIO: 0.3,        // α: Side 길이 대비 패들 길이
-  PADDLE_MOVE_RANGE: 0.6,          // β: Side 중심 기준 이동 범위
-  PADDLE_MAX_SPEED: 0.8,           // 최대 이동 속도 (Side 길이/초)
-  PADDLE_ACCELERATION: 2.0,        // 가속도
-  PADDLE_DECELERATION: 0.9,        // 감속 계수
+  // Paddle (기본값, N별로 getPaddleRatios 사용)
+  PADDLE_LENGTH_RATIO: 0.2,        // α: Side 길이 대비 패들 길이 (기본값)
+  PADDLE_MOVE_RANGE: 0.8,          // β: Side 중심 기준 이동 범위 (기본값)
+  PADDLE_MAX_SPEED: 2.5,           // 최대 이동 속도 (Side 길이/초)
+  PADDLE_ACCELERATION: 6.0,        // 가속도
+  PADDLE_DECELERATION: 0.85,       // 감속 계수
 
   // Ball
   BALL_INITIAL_SPEED: 0.3,         // 초기 속도 (R/초)
-  BALL_SPEED_INCREMENT: 1.05,      // HIT마다 5% 증가
+  BALL_FIRST_TURN_SPEED: 50,       // 첫 턴 느린 속도
+  BALL_NORMAL_SPEED: 100,          // 첫 HIT 후 정상 속도
+  BALL_SPEED_INCREMENT: 1.08,      // HIT마다 8% 증가
   BALL_RADIUS_RATIO: 0.03,         // Arena 대비 공 크기
 
   // Timing
@@ -60,3 +62,86 @@ export const PLAYER_COLORS = [
  * 방 코드 생성용 문자 집합
  */
 export const ROOM_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // I, O, 0, 1 제외
+
+/**
+ * N-adaptive 패들 비율 계산 (PolyPang 밸런싱)
+ *
+ * 핵심 공식: alpha + beta = 1
+ * - 이 조건을 만족해야 패들 끝점이 Side 끝점까지 도달 가능
+ *
+ * @param n - 플레이어 수 (2~8)
+ * @returns { alpha: 패들 길이 비율, beta: 이동 범위 비율, renderN: 렌더링용 N }
+ */
+export function getPaddleRatios(n: number): {
+  alpha: number;
+  beta: number;
+  renderN: number;
+} {
+  // N=2: 정사각형(N=4)으로 렌더링하되 2명만 배치 (위/아래)
+  if (n === 2) {
+    const alpha = 0.5; // 매우 큰 패들 (50%)
+    return {
+      alpha,
+      beta: 1 - alpha, // 0.5
+      renderN: 4,
+    };
+  }
+
+  // N=3: 정삼각형, 큰 패들
+  if (n === 3) {
+    const alpha = 0.4;
+    return {
+      alpha,
+      beta: 1 - alpha,
+      renderN: 3,
+    };
+  }
+
+  // N=4: 정사각형
+  if (n === 4) {
+    const alpha = 0.35;
+    return {
+      alpha,
+      beta: 1 - alpha,
+      renderN: 4,
+    };
+  }
+
+  // N=5: 정오각형
+  if (n === 5) {
+    const alpha = 0.3;
+    return {
+      alpha,
+      beta: 1 - alpha,
+      renderN: 5,
+    };
+  }
+
+  // N=6: 정육각형
+  if (n === 6) {
+    const alpha = 0.25;
+    return {
+      alpha,
+      beta: 1 - alpha,
+      renderN: 6,
+    };
+  }
+
+  // N=7: 정칠각형
+  if (n === 7) {
+    const alpha = 0.22;
+    return {
+      alpha,
+      beta: 1 - alpha,
+      renderN: 7,
+    };
+  }
+
+  // N≥8: 정팔각형 이상
+  const alpha = 0.2;
+  return {
+    alpha,
+    beta: 1 - alpha,
+    renderN: n,
+  };
+}

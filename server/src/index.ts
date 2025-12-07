@@ -84,10 +84,10 @@ app.get('/api/games', (_req, res) => {
 
 // 프로덕션: 정적 파일 서빙
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../../client/build')));
+  app.use(express.static(path.join(__dirname, '../../client/dist')));
 
   app.get('*', (_req, res) => {
-    res.sendFile(path.join(__dirname, '../../client/build', 'index.html'));
+    res.sendFile(path.join(__dirname, '../../client/dist', 'index.html'));
   });
 }
 

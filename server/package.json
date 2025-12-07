@@ -7,7 +7,9 @@
     "start": "node dist/index.js",
     "dev": "nodemon --exec ts-node src/index.ts",
     "build": "tsc",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui"
   },
   "keywords": [
     "multiplayer",
@@ -32,8 +34,10 @@
     "@types/node": "^24.10.1",
     "@types/uuid": "^10.0.0",
     "nodemon": "^3.0.1",
+    "socket.io-client": "^4.8.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
   },
   "engines": {
     "node": ">=18.0.0"

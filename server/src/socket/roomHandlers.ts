@@ -29,14 +29,15 @@ export function handleCreateRoom(
   _io: SocketIOServer,
   socket: Socket,
   data: { nickname: string; maxPlayers?: number },
-  callback: (response: any) => void
+  callback?: (response: any) => void
 ) {
   const { nickname, maxPlayers = GAME_CONSTANTS.MAX_PLAYERS } = data;
 
   // 닉네임 검증
   if (!nickname || nickname.trim().length === 0 || nickname.length > 10) {
     sendError(socket, ErrorCode.INVALID_NICKNAME);
-    return callback({ error: ErrorCode.INVALID_NICKNAME });
+    if (callback) callback({ error: ErrorCode.INVALID_NICKNAME });
+    return;
   }
 
   // 방 코드 생성 (중복 체크)
@@ -72,10 +73,13 @@ export function handleCreateRoom(
   socket.join(roomCode);
 
   // 응답
-  callback({ success: true, roomCode });
+  if (callback) callback({ success: true, roomCode });
 
   // room_joined 이벤트
-  socket.emit('room_joined', serializeRoom(room));
+  socket.emit('room_joined', {
+    room: serializeRoom(room),
+    userId: playerId,
+  });
 }
 
 /**
@@ -85,39 +89,44 @@ export function handleJoinRoom(
   _io: SocketIOServer,
   socket: Socket,
   data: { roomCode: string; nickname: string },
-  callback: (response: any) => void
+  callback?: (response: any) => void
 ) {
   const { roomCode, nickname } = data;
 
   // 코드 유효성 검사
   if (!isValidRoomCode(roomCode)) {
     sendError(socket, ErrorCode.INVALID_CODE);
-    return callback({ error: ErrorCode.INVALID_CODE });
+    if (callback) callback({ error: ErrorCode.INVALID_CODE });
+    return;
   }
 
   // 방 존재 여부 확인
   const room = rooms.get(roomCode);
   if (!room) {
     sendError(socket, ErrorCode.ROOM_NOT_FOUND);
-    return callback({ error: ErrorCode.ROOM_NOT_FOUND });
+    if (callback) callback({ error: ErrorCode.ROOM_NOT_FOUND });
+    return;
   }
 
   // 게임 진행 중 확인
   if (room.state !== RoomState.LOBBY) {
     sendError(socket, ErrorCode.GAME_IN_PROGRESS);
-    return callback({ error: ErrorCode.GAME_IN_PROGRESS });
+    if (callback) callback({ error: ErrorCode.GAME_IN_PROGRESS });
+    return;
   }
 
   // 방 인원 확인
   if (room.players.size >= room.maxPlayers) {
     sendError(socket, ErrorCode.ROOM_FULL);
-    return callback({ error: ErrorCode.ROOM_FULL });
+    if (callback) callback({ error: ErrorCode.ROOM_FULL });
+    return;
   }
 
   // 닉네임 검증
   if (!nickname || nickname.trim().length === 0 || nickname.length > 10) {
     sendError(socket, ErrorCode.INVALID_NICKNAME);
-    return callback({ error: ErrorCode.INVALID_NICKNAME });
+    if (callback) callback({ error: ErrorCode.INVALID_NICKNAME });
+    return;
   }
 
   // 플레이어 생성
@@ -138,7 +147,13 @@ export function handleJoinRoom(
   socket.join(roomCode);
 
   // 응답
-  callback({ success: true, room: serializeRoom(room) });
+  if (callback) callback({ success: true, room: serializeRoom(room) });
+
+  // 참가한 플레이어에게 room_joined 이벤트
+  socket.emit('room_joined', {
+    room: serializeRoom(room),
+    userId: playerId,
+  });
 
   // 기존 플레이어들에게 알림
   socket.to(roomCode).emit('player_joined', {

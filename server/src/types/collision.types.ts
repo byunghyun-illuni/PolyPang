@@ -24,6 +24,7 @@ export type CollisionResult =
       sideIndex: number;       // 어느 Side인가
       hitPoint: Vector2D;      // 충돌 지점
       normal: Vector2D;        // 법선 벡터
+      paddleOffset: number;    // 패들 오프셋 (-1 ~ 1)
     }
   | {
       type: CollisionType.WALL_REFLECT;

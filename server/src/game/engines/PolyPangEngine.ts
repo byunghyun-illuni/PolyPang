@@ -55,7 +55,7 @@ export class PolyPangEngine {
 
     for (let i = 0; i < n; i++) {
       const playerId = playerIds[i];
-      const paddle = this.physicsEngine.initPaddle(playerId, i, sideLength);
+      const paddle = this.physicsEngine.initPaddle(playerId, i, sideLength, n);
       paddles.set(playerId, paddle);
 
       // 플레이어 통계 초기화

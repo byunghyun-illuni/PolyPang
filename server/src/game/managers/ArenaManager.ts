@@ -73,7 +73,7 @@ export class ArenaManager {
 
     for (let i = 0; i < gameState.alivePlayers.length; i++) {
       const playerId = gameState.alivePlayers[i];
-      const paddle = this.physicsEngine.initPaddle(playerId, i, sideLength);
+      const paddle = this.physicsEngine.initPaddle(playerId, i, sideLength, n);
       newPaddles.set(playerId, paddle);
     }
 

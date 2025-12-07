@@ -51,7 +51,7 @@ export default function ArenaTestScreen() {
     alivePlayers,
     playerCount,
     myPlayerIndex,
-    winner,
+    winner: _winner,
     handlePlayerOut,
     startGame,
     restartGame,
