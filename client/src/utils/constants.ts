@@ -33,7 +33,18 @@ export const GAME_CONSTANTS = {
   CLIENT_RENDER_FPS: 60, // 클라이언트 렌더링
   RECONNECT_MAX_ATTEMPTS: 5, // 재연결 최대 시도
   RECONNECT_INTERVAL: 2000, // 재연결 간격 (ms)
+
+  // Arena
+  FIXED_ARENA_SIDES: 8, // 항상 8각형으로 시작 (빈 자리는 봇)
+  BOT_ID_PREFIX: 'BOT_', // 봇 플레이어 ID 접두사
 } as const
+
+/**
+ * 봇 여부 확인
+ */
+export function isBot(playerId: string): boolean {
+  return playerId.startsWith(GAME_CONSTANTS.BOT_ID_PREFIX)
+}
 
 /**
  * 화면 레이아웃 비율 (9:16 기준)

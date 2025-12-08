@@ -113,19 +113,23 @@ describe('Multiplayer Game Flow', () => {
       // 게임 시작
       host.emit('start_game', { roomCode });
 
-      const [gameState1, gameState2] = await Promise.all([
+      const [data1, data2] = await Promise.all([
         gameStartedPromise1,
         gameStartedPromise2,
       ]);
 
+      // 서버는 { gameState: {...} } 구조로 전송
+      const gameState1 = data1.gameState;
+      const gameState2 = data2.gameState;
+
       // 게임 상태 검증
       expect(gameState1.ball).toBeDefined();
       expect(gameState1.paddles).toBeDefined();
-      expect(gameState1.players).toBeDefined();
+      expect(gameState1.alivePlayers).toBeDefined();
 
       // 두 클라이언트가 같은 상태를 받아야 함
-      expect(gameState1.ball.x).toBe(gameState2.ball.x);
-      expect(gameState1.ball.y).toBe(gameState2.ball.y);
+      expect(gameState1.ball.position.x).toBe(gameState2.ball.position.x);
+      expect(gameState1.ball.position.y).toBe(gameState2.ball.position.y);
     });
 
     it('게임 상태에 모든 플레이어의 패들이 있어야 함', async () => {
@@ -133,10 +137,11 @@ describe('Multiplayer Game Flow', () => {
 
       host.emit('start_game', { roomCode });
 
-      const gameState = await gameStartedPromise;
+      const data = await gameStartedPromise;
+      const gameState = data.gameState;
 
-      // 2명의 패들이 있어야 함
-      expect(Object.keys(gameState.paddles)).toHaveLength(2);
+      // 8각형으로 시작 (2명 실제 + 6명 봇)
+      expect(gameState.paddles).toHaveLength(8);
     });
   });
 
@@ -264,11 +269,13 @@ describe('Full Game Scenario', () => {
     // 게임 시작
     clients[0].emit('start_game', { roomCode: room.roomCode });
 
-    const gameStates = await Promise.all(gameStartedPromises);
+    const responses = await Promise.all(gameStartedPromises);
+    const gameStates = responses.map((r) => r.gameState);
 
     // 모든 클라이언트가 같은 게임 상태를 받아야 함
     expect(gameStates.every((gs) => gs.ball !== undefined)).toBe(true);
-    expect(Object.keys(gameStates[0].paddles)).toHaveLength(4);
+    // 8각형으로 시작 (4명 실제 + 4명 봇)
+    expect(gameStates[0].paddles).toHaveLength(8);
 
     // 정리
     clients.forEach((c) => c.disconnect());

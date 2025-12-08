@@ -5,6 +5,7 @@
  */
 
 import type { Color } from '@/types'
+import { isBot } from './constants'
 
 /**
  * 플레이어 색상 (최대 8명)
@@ -31,6 +32,11 @@ export const MY_PADDLE_COLOR: Color = '#FCD34D'
 export const OUT_PLAYER_COLOR: Color = '#9CA3AF'
 
 /**
+ * 봇 패들 색상 (어두운 회색 - 쉬운 타겟 느낌)
+ */
+export const BOT_PADDLE_COLOR: Color = '#4B5563'
+
+/**
  * 플레이어 인덱스로 색상 가져오기
  */
 export function getPlayerColor(index: number): Color {
@@ -39,11 +45,17 @@ export function getPlayerColor(index: number): Color {
 
 /**
  * PlayerId로 색상 가져오기 (플레이어 목록에서 인덱스 찾기)
+ * - 봇이면 봇 색상 반환
  */
 export function getPlayerColorById(
   playerId: string,
   players: Array<{ userId: string }>
 ): Color {
+  // 봇이면 봇 색상
+  if (isBot(playerId)) {
+    return BOT_PADDLE_COLOR
+  }
+
   const index = players.findIndex((p) => p.userId === playerId)
   return index >= 0 ? getPlayerColor(index) : OUT_PLAYER_COLOR
 }

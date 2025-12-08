@@ -39,14 +39,25 @@ export class PolyPangEngine {
   /**
    * 게임 초기화 및 시작
    *
+   * - 항상 8각형으로 시작
+   * - 실제 플레이어 + 봇(가만히 있는 패들)로 8명 채움
+   * - 봇도 OUT 가능 (쉬운 타겟)
+   *
    * @param players - 플레이어 목록
    */
   start(players: Map<string, Player>): void {
-    // 1. 게임 상태 초기화
-    const playerIds = Array.from(players.keys());
-    const n = playerIds.length;
+    // 1. 실제 플레이어 목록
+    const realPlayerIds = Array.from(players.keys());
+    const realPlayerCount = realPlayerIds.length;
 
-    const arena = this.arenaManager.createInitialArena(playerIds);
+    // 2. 항상 8각형 (빈 자리는 봇으로 채움)
+    const n = GAME_CONSTANTS.FIXED_ARENA_SIDES; // 8
+    const botCount = n - realPlayerCount;
+
+    // 3. 플레이어 배치: 실제 플레이어를 균등하게 배치하고 사이에 봇 배치
+    const allPlayerIds = this.distributePlayersAndBots(realPlayerIds, n);
+
+    const arena = this.arenaManager.createInitialArena(allPlayerIds);
     const ball = this.physicsEngine.initBall(arena.radius, n);
 
     const paddles = new Map();
@@ -54,7 +65,7 @@ export class PolyPangEngine {
     const sideLength = calculateSideLength(arena.radius, n);
 
     for (let i = 0; i < n; i++) {
-      const playerId = playerIds[i];
+      const playerId = allPlayerIds[i];
       const paddle = this.physicsEngine.initPaddle(playerId, i, sideLength, n);
       paddles.set(playerId, paddle);
 
@@ -71,12 +82,14 @@ export class PolyPangEngine {
       arena,
       ball,
       paddles,
-      alivePlayers: playerIds,
+      alivePlayers: allPlayerIds,
       outPlayers: [],
       playerStats,
       tick: 0,
       startedAt: new Date().toISOString(),
     };
+
+    console.log(`[PolyPang] 게임 시작: ${realPlayerCount}명 플레이어 + ${botCount}명 봇 = 8각형`);
 
     // 2. game_started 이벤트 전송
     this.io.to(this.roomCode).emit('game_started', {
@@ -85,6 +98,47 @@ export class PolyPangEngine {
 
     // 3. 30fps 틱 루프 시작
     this.startTickLoop();
+  }
+
+  /**
+   * 실제 플레이어와 봇을 균등하게 배치
+   *
+   * 예: 2명 플레이어 → [P1, BOT, BOT, BOT, P2, BOT, BOT, BOT]
+   *     3명 플레이어 → [P1, BOT, BOT, P2, BOT, P3, BOT, BOT] (대략 균등)
+   *
+   * @param realPlayerIds - 실제 플레이어 ID 목록
+   * @param totalSlots - 전체 슬롯 수 (8)
+   * @returns 배치된 플레이어/봇 ID 목록
+   */
+  private distributePlayersAndBots(realPlayerIds: string[], totalSlots: number): string[] {
+    const result: string[] = new Array(totalSlots).fill(null);
+    const realCount = realPlayerIds.length;
+
+    if (realCount === 0) {
+      // 모두 봇 (테스트용)
+      for (let i = 0; i < totalSlots; i++) {
+        result[i] = `${GAME_CONSTANTS.BOT_ID_PREFIX}${i}`;
+      }
+      return result;
+    }
+
+    // 실제 플레이어를 균등하게 배치
+    const spacing = totalSlots / realCount;
+    for (let i = 0; i < realCount; i++) {
+      const slotIndex = Math.floor(i * spacing);
+      result[slotIndex] = realPlayerIds[i];
+    }
+
+    // 나머지 빈 슬롯에 봇 배치
+    let botIndex = 0;
+    for (let i = 0; i < totalSlots; i++) {
+      if (result[i] === null) {
+        result[i] = `${GAME_CONSTANTS.BOT_ID_PREFIX}${botIndex}`;
+        botIndex++;
+      }
+    }
+
+    return result;
   }
 
   /**

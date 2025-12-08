@@ -83,11 +83,14 @@ export class ArenaManager {
   /**
    * 게임 종료 조건 체크
    *
+   * - 실제 플레이어가 1명 이하일 때 종료 (봇 제외)
+   *
    * @param gameState - 게임 상태
-   * @returns true if 게임 종료 (Alive 1명 이하)
+   * @returns true if 게임 종료
    */
   isGameOver(gameState: GameState): boolean {
-    return gameState.alivePlayers.length <= 1;
+    const realPlayers = this.getRealPlayers(gameState.alivePlayers);
+    return realPlayers.length <= 1;
   }
 
   /**
@@ -97,9 +100,30 @@ export class ArenaManager {
    * @returns 우승자 ID (없으면 undefined)
    */
   getWinnerId(gameState: GameState): string | undefined {
-    if (gameState.alivePlayers.length === 1) {
-      return gameState.alivePlayers[0];
+    const realPlayers = this.getRealPlayers(gameState.alivePlayers);
+    if (realPlayers.length === 1) {
+      return realPlayers[0];
     }
     return undefined;
+  }
+
+  /**
+   * 봇이 아닌 실제 플레이어만 필터링
+   *
+   * @param playerIds - 플레이어 ID 목록
+   * @returns 실제 플레이어 ID 목록
+   */
+  private getRealPlayers(playerIds: string[]): string[] {
+    return playerIds.filter((id) => !id.startsWith(GAME_CONSTANTS.BOT_ID_PREFIX));
+  }
+
+  /**
+   * 봇 여부 확인
+   *
+   * @param playerId - 플레이어 ID
+   * @returns true if 봇
+   */
+  isBot(playerId: string): boolean {
+    return playerId.startsWith(GAME_CONSTANTS.BOT_ID_PREFIX);
   }
 }

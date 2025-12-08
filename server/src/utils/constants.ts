@@ -38,6 +38,8 @@ export const GAME_CONSTANTS = {
   ROOM_CODE_LENGTH: 6,             // 방 코드 길이
   MAX_PLAYERS: 8,                  // 최대 플레이어 수
   MIN_PLAYERS: 2,                  // 최소 플레이어 수
+  FIXED_ARENA_SIDES: 8,            // 항상 8각형으로 시작 (빈 자리는 봇)
+  BOT_ID_PREFIX: 'BOT_',           // 봇 플레이어 ID 접두사
 
   // Physics
   DT: 1 / 30,                      // 물리 틱 간격 (초)
