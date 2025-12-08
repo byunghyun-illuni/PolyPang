@@ -4,7 +4,9 @@
 
 import { io, Socket } from 'socket.io-client'
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001'
+// 프로덕션에서는 같은 호스트 사용, 개발에서는 localhost:3001
+const SERVER_URL = import.meta.env.VITE_SERVER_URL ||
+  (import.meta.env.PROD ? window.location.origin : 'http://localhost:3001')
 
 let socket: Socket | null = null
 

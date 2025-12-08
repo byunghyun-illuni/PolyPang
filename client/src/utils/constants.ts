@@ -62,7 +62,8 @@ export const LAYOUT_RATIOS = {
  * 환경 변수
  */
 export const ENV = {
-  SERVER_URL: import.meta.env.VITE_SERVER_URL || 'http://localhost:3001',
+  SERVER_URL: import.meta.env.VITE_SERVER_URL ||
+    (import.meta.env.PROD ? window.location.origin : 'http://localhost:3001'),
   SOCKET_PATH: import.meta.env.VITE_SOCKET_PATH || '/socket.io',
   IS_DEV: import.meta.env.DEV,
   IS_PROD: import.meta.env.PROD,
