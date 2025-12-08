@@ -318,11 +318,23 @@ export class PolyPangEngine {
 
     // 7. arena_remesh_start 이벤트 (새 Arena + 새 공 위치)
     // 클라이언트는 이 이벤트 후 카운트다운(3초) 시작
+    const arenaRadius = this.gameState.arena.radius;
     this.io.to(this.roomCode).emit('arena_remesh_start', {
       newArena: this.gameState.arena,
-      newBall: this.gameState.ball,
+      // 공 위치 정규화 (클라이언트에서 arenaRadius 곱해서 사용)
+      newBall: {
+        ...this.gameState.ball,
+        position: {
+          x: this.gameState.ball.position.x / arenaRadius,
+          y: this.gameState.ball.position.y / arenaRadius,
+        },
+      },
+      // 패들 position 정규화 ([-1, +1] 범위)
       newPaddles: Array.from(this.gameState.paddles.entries()).map(([_id, paddle]) => ({
         ...paddle,
+        position: paddle.moveRange !== 0
+          ? paddle.position / paddle.moveRange  // [-beta, +beta] → [-1, +1]
+          : paddle.position,
       })),
     });
 
@@ -442,11 +454,13 @@ export class PolyPangEngine {
   private broadcastGameState(): void {
     if (!this.gameState) return;
 
-    // 패들 정보를 배열로 변환
+    // 패들 정보를 배열로 변환 (position을 [-1, +1] 범위로 정규화)
     const paddlesArray = Array.from(this.gameState.paddles.entries()).map(([_id, paddle]) => ({
       playerId: paddle.playerId,
       sideIndex: paddle.sideIndex,
-      position: paddle.position,
+      position: paddle.moveRange !== 0
+        ? paddle.position / paddle.moveRange  // [-beta, +beta] → [-1, +1]
+        : paddle.position,
       velocity: paddle.velocity,
     }));
 
@@ -477,11 +491,13 @@ export class PolyPangEngine {
 
     paddle.direction = direction;
 
-    // paddle_update 이벤트
+    // paddle_update 이벤트 (position을 [-1, +1] 범위로 정규화)
     this.io.to(this.roomCode).emit('paddle_update', {
       userId: playerId,
       paddle: {
-        position: paddle.position,
+        position: paddle.moveRange !== 0
+          ? paddle.position / paddle.moveRange  // [-beta, +beta] → [-1, +1]
+          : paddle.position,
         velocity: paddle.velocity,
         direction: paddle.direction,
       },
