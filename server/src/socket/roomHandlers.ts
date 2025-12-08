@@ -157,8 +157,7 @@ export function handleJoinRoom(
 
   // 기존 플레이어들에게 알림
   socket.to(roomCode).emit('player_joined', {
-    userId: playerId,
-    username: nickname,
+    player,
     room: serializeRoom(room),
   });
 }
