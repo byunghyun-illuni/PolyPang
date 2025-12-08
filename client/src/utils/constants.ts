@@ -61,14 +61,14 @@ export const LAYOUT_RATIOS = {
 /**
  * 환경 변수
  */
-// 서버 URL: localhost가 아니면 같은 origin 사용 (배포 환경)
-const getServerUrl = () => import.meta.env.VITE_SERVER_URL ||
-  (typeof window !== 'undefined' && !window.location.hostname.includes('localhost')
-    ? window.location.origin
-    : 'http://localhost:3001')
-
+// 서버 URL은 런타임에 동적으로 결정 (getter 사용)
 export const ENV = {
-  SERVER_URL: getServerUrl(),
+  get SERVER_URL() {
+    return import.meta.env.VITE_SERVER_URL ||
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:3001'
+        : window.location.origin)
+  },
   SOCKET_PATH: import.meta.env.VITE_SOCKET_PATH || '/socket.io',
   IS_DEV: import.meta.env.DEV,
   IS_PROD: import.meta.env.PROD,

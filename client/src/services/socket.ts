@@ -4,20 +4,6 @@
 
 import { io, Socket } from 'socket.io-client'
 
-// 서버 URL 결정: 환경변수 > 현재 호스트 (프로덕션) > localhost (개발)
-function getServerUrl(): string {
-  if (import.meta.env.VITE_SERVER_URL) {
-    return import.meta.env.VITE_SERVER_URL
-  }
-  // localhost가 아니면 같은 origin 사용 (배포 환경)
-  if (typeof window !== 'undefined' && !window.location.hostname.includes('localhost')) {
-    return window.location.origin
-  }
-  return 'http://localhost:3001'
-}
-
-const SERVER_URL = getServerUrl()
-
 let socket: Socket | null = null
 
 /**
@@ -28,7 +14,15 @@ export function initSocket(): Socket {
     return socket
   }
 
-  socket = io(SERVER_URL, {
+  // 서버 URL을 연결 시점에 동적으로 결정 (빌드 타임 인라인화 방지)
+  const serverUrl = import.meta.env.VITE_SERVER_URL ||
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? 'http://localhost:3001'
+      : window.location.origin)
+
+  console.log('[Socket] Connecting to:', serverUrl)
+
+  socket = io(serverUrl, {
     transports: ['websocket'],
     autoConnect: true,
     reconnection: true,

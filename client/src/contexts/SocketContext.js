@@ -14,10 +14,12 @@ export function SocketProvider({ children }) {
   const { user, login } = useAuth();
   
   useEffect(() => {
-    // Get the server URL from environment variables or use default
-    // localhost가 아니면 같은 origin 사용 (배포 환경)
+    // 서버 URL을 연결 시점에 동적으로 결정
     const serverUrl = import.meta.env.VITE_SERVER_URL ||
-      (window.location.hostname.includes('localhost') ? 'http://localhost:3001' : window.location.origin);
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:3001'
+        : window.location.origin);
+    console.log('[SocketContext] Connecting to:', serverUrl);
     
     // Create socket connection
     const socketConnection = io(serverUrl, {
