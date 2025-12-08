@@ -50,14 +50,31 @@ export class CollisionDetector {
     side: Side,
     paddles: Map<string, Paddle>
   ): CollisionResult {
+    // 부호 있는 거리 계산 (외향 법선 기준)
+    // signedDistance > 0: 공이 Side 바깥쪽
+    // signedDistance < 0: 공이 Side 안쪽 (Arena 내부)
+    const ballToSideCenter = {
+      x: ball.position.x - side.center.x,
+      y: ball.position.y - side.center.y,
+    };
+    const signedDistance = dot(ballToSideCenter, side.normal);
+
+    // 공의 표면이 Side에 닿았는지 확인
+    // 공이 안쪽(signedDistance < 0)에서 접근할 때:
+    // - 표면 위치 = signedDistance + ball.radius
+    // - 표면이 Side에 닿음: signedDistance + ball.radius >= 0
+    // - 즉, signedDistance >= -ball.radius
+    if (signedDistance < -ball.radius) {
+      return { type: CollisionType.NONE };  // 공이 아직 Side에 닿지 않음
+    }
+
+    // Side 선분의 범위 체크 (코너 처리)
     const distanceToSide = distanceToSegment(ball.position, {
       start: side.start,
       end: side.end,
     });
-
-    // 공이 Side와 충돌하지 않음
     if (distanceToSide > ball.radius) {
-      return { type: CollisionType.NONE };
+      return { type: CollisionType.NONE };  // 공이 Side 범위 밖 (코너 영역)
     }
 
     // 공이 Side를 향해 이동 중인지 확인 (법선 벡터와 속도 벡터 내적)
