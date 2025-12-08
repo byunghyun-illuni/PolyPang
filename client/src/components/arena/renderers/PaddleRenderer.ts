@@ -5,6 +5,7 @@
  * - 각 플레이어의 패들 렌더링
  * - 패들 위치 업데이트
  * - 내 패들 강조 표시
+ * - 히트 이펙트 표시 (공이 패들에 맞았을 때)
  *
  * 스펙:
  * - 길이: Side 길이 × 0.3 (α)
@@ -15,11 +16,12 @@
  * 출처: docs/planning/03_PRD_Arena상세.md
  */
 
-import { Container, Graphics, LINE_CAP } from 'pixi.js'
+import { Container, Graphics, LINE_CAP, Ticker } from 'pixi.js'
 import {
   getSideCenter,
   getSideTangent,
   getSideLength,
+  getSideNormal,
 } from '@/physics/geometry'
 import { add, multiply } from '@/physics/vector'
 import { getPaddleRatios } from '@/utils/constants'
@@ -44,14 +46,30 @@ interface PaddleRendererOptions {
   paddles: PaddleData[]
 }
 
+interface HitEffect {
+  /** Side 인덱스 */
+  sideIndex: number
+  /** 패들 내 오프셋 (-1 ~ 1) */
+  paddleOffset: number
+  /** 시작 시간 */
+  startTime: number
+  /** 지속 시간 (ms) */
+  duration: number
+}
+
 export class PaddleRenderer {
   private container: Container
   private graphics: Graphics
+  private hitEffectGraphics: Graphics
+  private hitEffects: HitEffect[] = []
+  private ticker: Ticker | null = null
 
   constructor(private options: PaddleRendererOptions) {
     this.container = new Container()
     this.graphics = new Graphics()
+    this.hitEffectGraphics = new Graphics()
     this.container.addChild(this.graphics)
+    this.container.addChild(this.hitEffectGraphics)
 
     this.render()
   }
@@ -90,6 +108,76 @@ export class PaddleRenderer {
         moveRange
       )
     })
+
+    // 히트 이펙트 렌더링
+    this.renderHitEffects()
+  }
+
+  /**
+   * 히트 이펙트 렌더링
+   */
+  private renderHitEffects() {
+    this.hitEffectGraphics.clear()
+
+    const now = performance.now()
+    const { n, radius, paddles } = this.options
+    const { alpha, beta, renderN } = getPaddleRatios(n)
+    const playerSideIndices = n === 2 ? [0, 2] : Array.from({ length: n }, (_, i) => i)
+    const sideLength = getSideLength(renderN, radius)
+    const paddleLength = sideLength * alpha
+    const moveRange = sideLength * beta
+
+    // 만료된 이펙트 제거
+    this.hitEffects = this.hitEffects.filter(
+      (effect) => now - effect.startTime < effect.duration
+    )
+
+    // 각 히트 이펙트 그리기
+    for (const effect of this.hitEffects) {
+      const progress = (now - effect.startTime) / effect.duration // 0 ~ 1
+      const easeOut = 1 - Math.pow(1 - progress, 2) // ease-out
+
+      // 해당 Side의 패들 찾기
+      const paddleIndex = playerSideIndices.indexOf(effect.sideIndex)
+      if (paddleIndex === -1) continue
+
+      const paddle = paddles[paddleIndex]
+      if (!paddle) continue
+
+      // 히트 포인트 좌표 계산
+      const sideCenter = getSideCenter(effect.sideIndex, renderN, radius)
+      const tangent = getSideTangent(effect.sideIndex, renderN)
+      const normal = getSideNormal(effect.sideIndex, renderN)
+
+      // 패들 중심 위치
+      const paddleCenterOffset = (paddle.position * moveRange) / 2
+      const paddleCenter = add(sideCenter, multiply(tangent, paddleCenterOffset))
+
+      // 히트 포인트 = 패들 중심 + (paddleOffset * 패들반길이)
+      // Arena가 회전되어 있으므로 paddleOffset 부호 반전
+      const hitOffset = -effect.paddleOffset * (paddleLength / 2)
+      let hitPoint = add(paddleCenter, multiply(tangent, hitOffset))
+
+      // 히트 포인트를 Arena 안쪽으로 이동 (normal 방향 반대 = 안쪽)
+      const inwardOffset = 10 // 패들 안쪽으로 10px
+      hitPoint = add(hitPoint, multiply(normal, -inwardOffset))
+
+      // 내부 원 (점점 투명해짐)
+      const innerAlpha = 1 - progress
+      this.hitEffectGraphics.beginFill(0xfcd34d, innerAlpha)
+      this.hitEffectGraphics.drawCircle(hitPoint.x, hitPoint.y, 6)
+      this.hitEffectGraphics.endFill()
+
+      // 외부 링 (확장하면서 투명해짐)
+      const ringRadius = 6 + easeOut * 14 // 6 → 20
+      const ringAlpha = (1 - easeOut) * 0.8
+      this.hitEffectGraphics.lineStyle({
+        width: 2,
+        color: 0xfcd34d,
+        alpha: ringAlpha,
+      })
+      this.hitEffectGraphics.drawCircle(hitPoint.x, hitPoint.y, ringRadius)
+    }
   }
 
   /**
@@ -158,6 +246,41 @@ export class PaddleRenderer {
   }
 
   /**
+   * 히트 이펙트 표시
+   *
+   * @param sideIndex - Side 인덱스
+   * @param paddleOffset - 패들 내 오프셋 (-1 ~ 1, 왼쪽 끝 ~ 오른쪽 끝)
+   * @param duration - 지속 시간 (ms, 기본 200ms)
+   */
+  showHitEffect(sideIndex: number, paddleOffset: number, duration: number = 200) {
+    this.hitEffects.push({
+      sideIndex,
+      paddleOffset,
+      startTime: performance.now(),
+      duration,
+    })
+
+    // Ticker가 없으면 시작
+    if (!this.ticker) {
+      this.ticker = Ticker.shared
+      this.ticker.add(this.tickHitEffects, this)
+    }
+  }
+
+  /**
+   * 히트 이펙트 틱 (애니메이션)
+   */
+  private tickHitEffects() {
+    this.renderHitEffects()
+
+    // 모든 이펙트가 끝나면 Ticker 정리
+    if (this.hitEffects.length === 0 && this.ticker) {
+      this.ticker.remove(this.tickHitEffects, this)
+      this.ticker = null
+    }
+  }
+
+  /**
    * 컨테이너 가져오기
    */
   getContainer(): Container {
@@ -168,7 +291,13 @@ export class PaddleRenderer {
    * 정리
    */
   destroy() {
+    if (this.ticker) {
+      this.ticker.remove(this.tickHitEffects, this)
+      this.ticker = null
+    }
+    this.hitEffects = []
     this.graphics.destroy()
+    this.hitEffectGraphics.destroy()
     this.container.destroy()
   }
 }

@@ -4,6 +4,7 @@
  * 역할:
  * - 각 Side 뒤쪽에 빨간색 OUT 존 표시
  * - 플레이어가 막아야 하는 영역을 시각적으로 표시
+ * - OUT 발생 시 강렬한 플래시 효과
  *
  * 출처: UX 개선 (패들 뒤 = OUT 존)
  */
@@ -20,16 +21,21 @@ interface OutZoneRendererOptions {
   thickness?: number
   /** OUT된 Side 인덱스 (강조 표시) */
   outSideIndex?: number
+  /** 펄스 애니메이션 진행도 (0~1) */
+  pulseProgress?: number
 }
 
 export class OutZoneRenderer {
   private container: Container
   private graphics: Graphics
+  private flashGraphics: Graphics // OUT 플래시 효과용
 
   constructor(private options: OutZoneRendererOptions) {
     this.container = new Container()
     this.graphics = new Graphics()
+    this.flashGraphics = new Graphics()
     this.container.addChild(this.graphics)
+    this.container.addChild(this.flashGraphics)
 
     this.render()
   }
@@ -39,8 +45,9 @@ export class OutZoneRenderer {
    */
   private render() {
     this.graphics.clear()
+    this.flashGraphics.clear()
 
-    const { n, radius, thickness = 30, outSideIndex } = this.options
+    const { n, radius, thickness = 30, outSideIndex, pulseProgress = 0 } = this.options
 
     // 각 Side 뒤에 OUT 존 그리기
     for (let i = 0; i < n; i++) {
@@ -65,24 +72,65 @@ export class OutZoneRenderer {
 
       // OUT된 Side는 강조 표시
       const isOutSide = outSideIndex === i
-      const alpha = isOutSide ? 0.6 : 0.15
-      const color = isOutSide ? 0xff3333 : 0xff0000
 
-      // 빨간색 반투명 사각형
-      this.graphics.beginFill(color, alpha)
-      this.graphics.moveTo(v1.x, v1.y)
-      this.graphics.lineTo(v2.x, v2.y)
-      this.graphics.lineTo(outerV2.x, outerV2.y)
-      this.graphics.lineTo(outerV1.x, outerV1.y)
-      this.graphics.closePath()
-      this.graphics.endFill()
+      if (isOutSide) {
+        // OUT된 Side: 강렬한 플래시 효과
+        // 펄스 애니메이션 (깜빡임)
+        const pulseAlpha = 0.4 + Math.sin(pulseProgress * Math.PI * 6) * 0.3
 
-      // OUT 존 경계선
-      const borderAlpha = isOutSide ? 0.8 : 0.3
-      const borderWidth = isOutSide ? 2 : 1
-      this.graphics.lineStyle(borderWidth, color, borderAlpha)
-      this.graphics.moveTo(outerV1.x, outerV1.y)
-      this.graphics.lineTo(outerV2.x, outerV2.y)
+        // 빨간색 강조 영역 (더 넓게)
+        const flashThickness = thickness * 2.5
+        const flashOuterV1 = {
+          x: v1.x + normalX * flashThickness,
+          y: v1.y + normalY * flashThickness,
+        }
+        const flashOuterV2 = {
+          x: v2.x + normalX * flashThickness,
+          y: v2.y + normalY * flashThickness,
+        }
+
+        // 외부 글로우 효과
+        this.flashGraphics.beginFill(0xff0000, pulseAlpha * 0.5)
+        this.flashGraphics.moveTo(v1.x, v1.y)
+        this.flashGraphics.lineTo(v2.x, v2.y)
+        this.flashGraphics.lineTo(flashOuterV2.x, flashOuterV2.y)
+        this.flashGraphics.lineTo(flashOuterV1.x, flashOuterV1.y)
+        this.flashGraphics.closePath()
+        this.flashGraphics.endFill()
+
+        // 내부 강조 영역
+        this.graphics.beginFill(0xff3333, pulseAlpha)
+        this.graphics.moveTo(v1.x, v1.y)
+        this.graphics.lineTo(v2.x, v2.y)
+        this.graphics.lineTo(outerV2.x, outerV2.y)
+        this.graphics.lineTo(outerV1.x, outerV1.y)
+        this.graphics.closePath()
+        this.graphics.endFill()
+
+        // Side 자체도 빨간색 강조
+        this.graphics.lineStyle(4, 0xff0000, pulseAlpha + 0.3)
+        this.graphics.moveTo(v1.x, v1.y)
+        this.graphics.lineTo(v2.x, v2.y)
+
+        // 경계선 (두껍게)
+        this.graphics.lineStyle(3, 0xff0000, 0.9)
+        this.graphics.moveTo(outerV1.x, outerV1.y)
+        this.graphics.lineTo(outerV2.x, outerV2.y)
+      } else {
+        // 일반 Side: 기본 OUT 존
+        this.graphics.beginFill(0xff0000, 0.15)
+        this.graphics.moveTo(v1.x, v1.y)
+        this.graphics.lineTo(v2.x, v2.y)
+        this.graphics.lineTo(outerV2.x, outerV2.y)
+        this.graphics.lineTo(outerV1.x, outerV1.y)
+        this.graphics.closePath()
+        this.graphics.endFill()
+
+        // 경계선
+        this.graphics.lineStyle(1, 0xff0000, 0.3)
+        this.graphics.moveTo(outerV1.x, outerV1.y)
+        this.graphics.lineTo(outerV2.x, outerV2.y)
+      }
     }
   }
 
@@ -106,6 +154,7 @@ export class OutZoneRenderer {
    */
   destroy() {
     this.graphics.destroy()
+    this.flashGraphics.destroy()
     this.container.destroy()
   }
 }

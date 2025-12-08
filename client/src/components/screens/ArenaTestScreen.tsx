@@ -23,7 +23,7 @@ import { useBallPhysics } from '@/hooks/useBallPhysics'
 import { useGameState } from '@/hooks/useGameState'
 
 const INITIAL_PLAYER_COUNT = 8 // 항상 8명으로 시작
-const AUTO_RESTART_DELAY = 1500 // OUT 후 자동 재시작 딜레이 (ms)
+const AUTO_RESTART_DELAY = 800 // OUT 후 자동 재시작 딜레이 (ms)
 
 export default function ArenaTestScreen() {
   const [currentPlayerCount, setCurrentPlayerCount] = useState(INITIAL_PLAYER_COUNT)
@@ -31,6 +31,7 @@ export default function ArenaTestScreen() {
   const [lastOutPlayerName, setLastOutPlayerName] = useState<string | null>(null)
   const [isPaused, setIsPaused] = useState(true) // 처음에 일시정지 상태로 시작
   const [showOutMessage, setShowOutMessage] = useState(false)
+  const [snapshotN, setSnapshotN] = useState<number | null>(null) // OUT 연출 중 Arena N 고정
   const [arenaRadius, setArenaRadius] = useState(150) // 실제 렌더링 radius (동적 업데이트)
   const [countdown, setCountdown] = useState<number | null>(null) // 카운트다운 (3, 2, 1, null)
   const [showFinalEffect, setShowFinalEffect] = useState(false) // 1:1 결승 이펙트
@@ -129,42 +130,59 @@ export default function ArenaTestScreen() {
       const outPlayer = alivePlayers[sideIndex]
       setLastOutSide(sideIndex)
       setLastOutPlayerName(outPlayer?.nickname || `P${sideIndex + 1}`)
+      setSnapshotN(playerCount) // 현재 N을 스냅샷으로 저장 (OUT 연출 중 유지)
       setShowOutMessage(true)
       setIsPaused(true)
-      handlePlayerOut(sideIndex)
+      // handlePlayerOut은 OUT 연출 후에 호출 (AUTO_RESTART_DELAY 후)
     },
-    onPaddleHit: (sideIndex) => {
-      console.log(`HIT on Side ${sideIndex}`)
+    onPaddleHit: (sideIndex, paddleOffset) => {
+      console.log(`HIT on Side ${sideIndex}, offset: ${paddleOffset}`)
+      // 히트 이펙트 표시
+      if (paddleRendererRef.current) {
+        // N=2일 때 sideIndex 변환 (0→0, 1→2)
+        const actualSideIndex = playerCount === 2 ? (sideIndex === 0 ? 0 : 2) : sideIndex
+        paddleRendererRef.current.showHitEffect(actualSideIndex, paddleOffset)
+      }
     },
   })
 
-  // 우승 여부 (1명 남음 = 나만 남음)
-  const isVictory = playerCount <= 1 && lastOutSide !== null && lastOutSide !== 0
+  // 우승 여부: 2명 남은 상태(1:1)에서 상대가 OUT되면 우승
+  // lastOutSide !== 0 = 내가 아닌 다른 플레이어가 OUT
+  // playerCount === 2 = 1:1 상태였음 (OUT 처리 전)
+  const isVictory = playerCount === 2 && lastOutSide !== null && lastOutSide !== 0
 
   // OUT 후 자동 재시작 로직 (우승 시에는 자동 재시작 안함)
   useEffect(() => {
-    if (!showOutMessage) return
+    if (!showOutMessage || lastOutSide === null) return
 
     // 우승 시에는 자동 재시작 안함 - 버튼 클릭 대기
     if (isVictory) return
 
     const timer = setTimeout(() => {
+      // 1. OUT 연출 종료
       setShowOutMessage(false)
+      setSnapshotN(null)
 
-      // 내가 OUT된 경우 (sideIndex 0)
+      // 2. 실제로 플레이어 OUT 처리
+      handlePlayerOut(lastOutSide)
+
+      // 3. 내가 OUT된 경우 (sideIndex 0)
       const wasMyOut = lastOutSide === 0
 
-      if (wasMyOut) {
-        // 내가 OUT: 같은 인원수로 재시작
-        handleAutoRestart(currentPlayerCount)
-      } else {
-        // 다른 플레이어 OUT: 현재 남은 인원으로 계속 (이미 감소됨)
-        handleAutoRestart(playerCount)
-      }
+      // 약간의 딜레이 후 재시작 (상태 업데이트 반영)
+      setTimeout(() => {
+        if (wasMyOut) {
+          // 내가 OUT: 같은 인원수로 재시작
+          handleAutoRestart(currentPlayerCount)
+        } else {
+          // 다른 플레이어 OUT: N-1로 계속
+          handleAutoRestart(playerCount - 1)
+        }
+      }, 100)
     }, AUTO_RESTART_DELAY)
 
     return () => clearTimeout(timer)
-  }, [showOutMessage, lastOutSide, playerCount, currentPlayerCount, isVictory])
+  }, [showOutMessage, lastOutSide, playerCount, currentPlayerCount, isVictory, handlePlayerOut])
 
   // 자동 재시작 처리
   const handleAutoRestart = useCallback((newPlayerCount: number) => {
@@ -268,6 +286,10 @@ export default function ArenaTestScreen() {
     }
   }, [])
 
+  // OUT 연출 중에는 snapshotN 사용, 아니면 실제 playerCount 사용
+  const displayN = snapshotN ?? playerCount
+  const displayPlayers = snapshotN ? alivePlayers : alivePlayers // snapshotN 있으면 현재 alivePlayers 유지
+
   const handleRender = useCallback(
     (app: Application) => {
       // 첫 렌더링: 컨테이너와 렌더러 생성
@@ -286,12 +308,12 @@ export default function ArenaTestScreen() {
 
         // 정N각형 렌더러 생성
         // 회전 각도 계산
-        const rotation = getArenaRotationForMyPlayer(myPlayerIndex, playerCount)
+        const rotation = getArenaRotationForMyPlayer(myPlayerIndex, displayN)
 
         const polygonRenderer = new PolygonRenderer({
-          n: playerCount,
+          n: displayN,
           radius,
-          players: alivePlayers.map((p) => ({
+          players: displayPlayers.map((p) => ({
             userId: p.id,
             nickname: p.nickname,
           })),
@@ -302,14 +324,14 @@ export default function ArenaTestScreen() {
         polygonRendererRef.current = polygonRenderer
 
         // 패들 렌더러 생성
-        const paddleData = Array.from({ length: playerCount }, (_, i) => ({
+        const paddleData = Array.from({ length: displayN }, (_, i) => ({
           sideIndex: i,
           position: i === myPlayerIndex ? myPaddlePosition : 0,
           color: getPlayerColor(i),
           isMe: i === myPlayerIndex,
         }))
         const paddleRenderer = new PaddleRenderer({
-          n: playerCount,
+          n: displayN,
           radius,
           paddles: paddleData,
         })
@@ -330,7 +352,7 @@ export default function ArenaTestScreen() {
         arenaContainer.rotation = degToRad(rotation)
 
         console.log(
-          `[Arena] 초기화 N=${playerCount}, myIndex=${myPlayerIndex}, rotation=${rotation.toFixed(1)}°`
+          `[Arena] 초기화 N=${displayN}, myIndex=${myPlayerIndex}, rotation=${rotation.toFixed(1)}°`
         )
       } else {
         // 이후 렌더링: 렌더러 업데이트만
@@ -348,7 +370,7 @@ export default function ArenaTestScreen() {
 
         // 패들 업데이트
         if (paddleRendererRef.current) {
-          const paddleData = Array.from({ length: playerCount }, (_, i) => ({
+          const paddleData = Array.from({ length: displayN }, (_, i) => ({
             sideIndex: i,
             position: i === myPlayerIndex ? myPaddlePosition : 0,
             color: getPlayerColor(i),
@@ -367,10 +389,10 @@ export default function ArenaTestScreen() {
           })
         }
 
-        // playerCount 변경 시 전체 재생성 필요
+        // displayN 변경 시 전체 재생성 필요
         if (
           polygonRendererRef.current &&
-          (polygonRendererRef.current as any).options.n !== playerCount
+          (polygonRendererRef.current as any).options.n !== displayN
         ) {
           // 모든 렌더러 제거
           polygonRendererRef.current.destroy()
@@ -379,12 +401,12 @@ export default function ArenaTestScreen() {
           arenaContainer.removeChildren()
 
           // 재생성
-          const rotation = getArenaRotationForMyPlayer(myPlayerIndex, playerCount)
+          const rotation = getArenaRotationForMyPlayer(myPlayerIndex, displayN)
 
           const polygonRenderer = new PolygonRenderer({
-            n: playerCount,
+            n: displayN,
             radius,
-            players: alivePlayers.map((p) => ({
+            players: displayPlayers.map((p) => ({
               userId: p.id,
               nickname: p.nickname,
             })),
@@ -394,14 +416,14 @@ export default function ArenaTestScreen() {
           arenaContainer.addChild(polygonRenderer.getContainer())
           polygonRendererRef.current = polygonRenderer
 
-          const paddleData = Array.from({ length: playerCount }, (_, i) => ({
+          const paddleData = Array.from({ length: displayN }, (_, i) => ({
             sideIndex: i,
             position: i === myPlayerIndex ? myPaddlePosition : 0,
             color: getPlayerColor(i),
             isMe: i === myPlayerIndex,
           }))
           const paddleRenderer = new PaddleRenderer({
-            n: playerCount,
+            n: displayN,
             radius,
             paddles: paddleData,
           })
@@ -421,12 +443,12 @@ export default function ArenaTestScreen() {
           arenaContainer.rotation = degToRad(rotation)
 
           console.log(
-            `[Arena] 재생성 N=${playerCount}, myIndex=${myPlayerIndex}, rotation=${rotation.toFixed(1)}°`
+            `[Arena] 재생성 N=${displayN}, myIndex=${myPlayerIndex}, rotation=${rotation.toFixed(1)}°`
           )
         }
       }
     },
-    [playerCount, myPlayerIndex, alivePlayers, myPaddlePosition, ballPosition, ballTrail, hitEffectActive, lastOutSide, arenaRadius]
+    [displayN, displayPlayers, myPlayerIndex, myPaddlePosition, ballPosition, ballTrail, hitEffectActive, arenaRadius]
   )
 
   // 내가 OUT됐는지 여부
@@ -590,7 +612,7 @@ export default function ArenaTestScreen() {
                 <>
                   <div className="text-4xl mb-2">💨</div>
                   <div className="text-2xl font-bold text-white">{lastOutPlayerName} OUT!</div>
-                  <div className="text-sm text-white/80 mt-1">{playerCount}명 남음</div>
+                  <div className="text-sm text-white/80 mt-1">{playerCount - 1}명 남음</div>
                 </>
               )}
             </div>

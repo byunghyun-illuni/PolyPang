@@ -114,7 +114,7 @@ export class PhysicsEngine {
         break;
 
       case CollisionType.WALL_REFLECT:
-        this.handleWallReflect(gameState.ball, collision);
+        this.handleWallReflect(gameState.ball, collision, gameState);
         break;
 
       case CollisionType.SIDE_OUT:
@@ -187,13 +187,16 @@ export class PhysicsEngine {
    *
    * - 기본 반사 적용
    * - 최소 각도 보정: 벽에 너무 평행하게 튕기는 것 방지 (루즈한 상황 방지)
+   * - N=2(정사각형) 특수 처리: 좌우 벽에서 반사 시 항상 상/하 패들 방향으로 가도록 보정
    *
    * @param ball - 공
    * @param collision - 충돌 결과
+   * @param gameState - 게임 상태 (N=2 감지용)
    */
   private handleWallReflect(
     ball: Ball,
-    collision: Extract<CollisionResult, { type: CollisionType.WALL_REFLECT }>
+    collision: Extract<CollisionResult, { type: CollisionType.WALL_REFLECT }>,
+    gameState?: GameState
   ): void {
     // 반사
     const reflectedVelocity = reflect(
@@ -204,30 +207,52 @@ export class PhysicsEngine {
     const speed = magnitude(reflectedVelocity);
     let dir = normalize(reflectedVelocity);
 
-    // 최소 각도 보정: 벽에 너무 평행하게 튕기는 것 방지
-    // 법선 방향 속도 비율 (0~1, 1이면 수직, 0이면 평행)
-    const normalComponent = Math.abs(
-      dir.x * collision.normal.x + dir.y * collision.normal.y
-    );
+    // N=2 특수 처리: 정사각형에서 좌우 벽 반사 시 상/하(패들) 방향으로 강제 편향
+    // N=2일 때 renderN=4(정사각형)이고, 플레이어는 Side 0(하), Side 2(상)에 배치
+    // 벽은 Side 1(우), Side 3(좌)
+    if (gameState && gameState.alivePlayers.length === 2) {
+      // 수직 방향 성분 확인 (y 성분이 충분히 큰지)
+      const verticalComponent = Math.abs(dir.y);
+      const minVerticalRatio = 0.5; // 최소 30도 이상 (sin(30°) ≈ 0.5)
 
-    // 최소 20도 보장 (sin(20°) ≈ 0.342)
-    const minNormalRatio = GAME_CONSTANTS.WALL_MIN_ANGLE_RATIO;
+      if (verticalComponent < minVerticalRatio) {
+        // 공이 너무 수평으로 가면 상/하 방향으로 강제 편향
+        // 현재 y 방향 유지하면서 각도 조정
+        const ySign = dir.y >= 0 ? 1 : -1;
+        const targetVertical = minVerticalRatio * ySign;
 
-    if (normalComponent < minNormalRatio) {
-      // 중앙 방향 벡터 (0,0을 향하는 방향)
-      const distToCenter = magnitude(ball.position);
-      if (distToCenter > 0.01) {
-        const toCenter = normalize({
-          x: -ball.position.x,
-          y: -ball.position.y,
-        });
+        // 새로운 방향 계산 (x 성분 조정)
+        const newXSign = dir.x >= 0 ? 1 : -1;
+        const newX = Math.sqrt(1 - minVerticalRatio * minVerticalRatio) * newXSign;
 
-        // 중앙 방향으로 편향 (부족한 만큼 비례)
-        const blendFactor = (minNormalRatio - normalComponent) * 1.5;
-        dir = normalize({
-          x: dir.x + toCenter.x * blendFactor,
-          y: dir.y + toCenter.y * blendFactor,
-        });
+        dir = { x: newX, y: targetVertical };
+      }
+    } else {
+      // 기존 로직: 최소 각도 보정
+      // 법선 방향 속도 비율 (0~1, 1이면 수직, 0이면 평행)
+      const normalComponent = Math.abs(
+        dir.x * collision.normal.x + dir.y * collision.normal.y
+      );
+
+      // 최소 20도 보장 (sin(20°) ≈ 0.342)
+      const minNormalRatio = GAME_CONSTANTS.WALL_MIN_ANGLE_RATIO;
+
+      if (normalComponent < minNormalRatio) {
+        // 중앙 방향 벡터 (0,0을 향하는 방향)
+        const distToCenter = magnitude(ball.position);
+        if (distToCenter > 0.01) {
+          const toCenter = normalize({
+            x: -ball.position.x,
+            y: -ball.position.y,
+          });
+
+          // 중앙 방향으로 편향 (부족한 만큼 비례)
+          const blendFactor = (minNormalRatio - normalComponent) * 1.5;
+          dir = normalize({
+            x: dir.x + toCenter.x * blendFactor,
+            y: dir.y + toCenter.y * blendFactor,
+          });
+        }
       }
     }
 

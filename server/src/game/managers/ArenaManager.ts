@@ -41,6 +41,7 @@ export class ArenaManager {
    * - 정N각형 → 정(N-1)각형
    * - 남은 플레이어들을 새 Side에 재배치
    * - Paddle 재초기화
+   * - 공 위치/속도 초기화 (중앙에서 새로 시작)
    *
    * @param gameState - 게임 상태
    * @param outPlayerId - OUT 당한 플레이어 ID
@@ -78,18 +79,36 @@ export class ArenaManager {
     }
 
     gameState.paddles = newPaddles;
+
+    // 5. 공 위치/속도 초기화 (중앙에서 새로 시작)
+    const newBall = this.physicsEngine.initBall(gameState.arena.radius, n);
+    // hitCount는 유지 (속도 증가 유지)
+    newBall.hitCount = gameState.ball.hitCount;
+    newBall.lastHitBy = undefined;
+    gameState.ball = newBall;
   }
 
   /**
    * 게임 종료 조건 체크
    *
    * - 실제 플레이어가 1명 이하일 때 종료 (봇 제외)
+   * - 또는 전체 생존자가 1명 이하일 때 종료
    *
    * @param gameState - 게임 상태
    * @returns true if 게임 종료
    */
   isGameOver(gameState: GameState): boolean {
     const realPlayers = this.getRealPlayers(gameState.alivePlayers);
+    const totalAlive = gameState.alivePlayers.length;
+
+    console.log(`[ArenaManager] isGameOver check: realPlayers=${realPlayers.length}, totalAlive=${totalAlive}`);
+
+    // 전체 생존자가 1명 이하면 무조건 종료
+    if (totalAlive <= 1) {
+      return true;
+    }
+
+    // 실제 플레이어가 1명 이하면 종료 (봇만 남은 경우)
     return realPlayers.length <= 1;
   }
 

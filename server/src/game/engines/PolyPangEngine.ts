@@ -210,6 +210,13 @@ export class PolyPangEngine {
 
   /**
    * 플레이어 OUT 처리
+   *
+   * 순서:
+   * 1. out_pang 이벤트 (현재 공 위치, Arena 상태 포함)
+   * 2. 1.5초 대기 → 클라이언트에서 OUT 연출 (어디서 맞았는지 보여줌)
+   * 3. 리메시 (N-1각형, 공 중앙 초기화)
+   * 4. 0.5초 대기 → 리메시 애니메이션
+   * 5. 게임 재개
    */
   private async handlePlayerOut(playerId: string, sideIndex: number): Promise<void> {
     if (!this.gameState) return;
@@ -223,53 +230,62 @@ export class PolyPangEngine {
       stats.survivalTime = (outTime.getTime() - startTime.getTime()) / 1000; // 초 단위
     }
 
-    // 1. OUT Pang 이벤트
-    this.io.to(this.roomCode).emit('out_pang', {
-      userId: playerId,
-      sideIndex,
-    });
-
-    // 2. player_out 이벤트
-    this.io.to(this.roomCode).emit('player_out', {
-      userId: playerId,
-      reason: 'MISS',
-    });
-
-    // 3. 게임 루프 일시 중지 (슬로우모션)
+    // 1. 게임 루프 일시 중지 (공 멈춤)
     if (this.tickInterval) {
       clearInterval(this.tickInterval);
       this.tickInterval = null;
     }
 
-    // 4. 0.5초 대기 (슬로우모션 + OUT Pang 연출)
+    // 2. OUT Pang 이벤트 (현재 상태 스냅샷 포함)
+    // 클라이언트는 이 정보로 "어디서 OUT됐는지" 보여줌
+    this.io.to(this.roomCode).emit('out_pang', {
+      userId: playerId,
+      sideIndex,
+      // OUT 연출용 스냅샷
+      ballPosition: { ...this.gameState.ball.position },
+      currentN: this.gameState.alivePlayers.length,
+      outDuration: GAME_CONSTANTS.OUT_SLOWMO_DURATION,
+    });
+
+    // 3. player_out 이벤트
+    this.io.to(this.roomCode).emit('player_out', {
+      userId: playerId,
+      reason: 'MISS',
+    });
+
+    // 4. OUT 연출 대기 (클라이언트에서 빨간색 플래시 + "OUT!" 표시)
     await new Promise((resolve) =>
       setTimeout(resolve, GAME_CONSTANTS.OUT_SLOWMO_DURATION * 1000)
     );
 
-    // 5. Arena 리메시
+    // 5. Arena 리메시 (N-1각형, 공 중앙 초기화)
     this.arenaManager.remeshArena(this.gameState, playerId);
 
-    // 6. arena_remesh_start 이벤트
-    this.io.to(this.roomCode).emit('arena_remesh_start', {
-      newArena: this.gameState.arena,
-    });
-
-    // 7. 리메시 애니메이션 대기
-    await new Promise((resolve) =>
-      setTimeout(resolve, GAME_CONSTANTS.REMESH_ANIMATION_DURATION * 1000)
-    );
-
-    // 8. arena_remesh_complete 이벤트
-    // 플레이어 상태: INGAME_OUT → SPECTATOR
-    this.io.to(this.roomCode).emit('arena_remesh_complete', {
-      outPlayerId: playerId,
-    });
-
-    // 9. 게임 종료 조건 체크
+    // 6. 게임 종료 조건 체크 (리메시 후, 이벤트 전송 전)
+    // 실제 플레이어가 1명 이하면 게임 종료
     if (this.arenaManager.isGameOver(this.gameState)) {
       this.endGame();
       return;
     }
+
+    // 7. arena_remesh_start 이벤트 (새 Arena + 새 공 위치)
+    this.io.to(this.roomCode).emit('arena_remesh_start', {
+      newArena: this.gameState.arena,
+      newBall: this.gameState.ball,
+      newPaddles: Array.from(this.gameState.paddles.entries()).map(([_id, paddle]) => ({
+        ...paddle,
+      })),
+    });
+
+    // 8. 리메시 애니메이션 대기
+    await new Promise((resolve) =>
+      setTimeout(resolve, GAME_CONSTANTS.REMESH_ANIMATION_DURATION * 1000)
+    );
+
+    // 9. arena_remesh_complete 이벤트
+    this.io.to(this.roomCode).emit('arena_remesh_complete', {
+      outPlayerId: playerId,
+    });
 
     // 10. 게임 루프 재시작
     this.startTickLoop();
@@ -355,9 +371,19 @@ export class PolyPangEngine {
 
   /**
    * 게임 상태 브로드캐스트 (Delta)
+   *
+   * Ball과 Paddles 위치를 모든 클라이언트에 전송
    */
   private broadcastGameState(): void {
     if (!this.gameState) return;
+
+    // 패들 정보를 배열로 변환
+    const paddlesArray = Array.from(this.gameState.paddles.entries()).map(([_id, paddle]) => ({
+      playerId: paddle.playerId,
+      sideIndex: paddle.sideIndex,
+      position: paddle.position,
+      velocity: paddle.velocity,
+    }));
 
     this.io.to(this.roomCode).emit('game_state_update', {
       tick: this.gameState.tick,
@@ -366,7 +392,7 @@ export class PolyPangEngine {
         velocity: this.gameState.ball.velocity,
         speed: this.gameState.ball.speed,
       },
-      // paddles는 변경 시만 전송 (최적화)
+      paddles: paddlesArray,
     });
   }
 

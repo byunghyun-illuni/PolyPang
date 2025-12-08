@@ -25,7 +25,7 @@ export const GAME_CONSTANTS = {
 
   // Timing
   COUNTDOWN_SECONDS: 3,
-  OUT_SLOWMO_DURATION: 0.5, // 슬로우모션 지속 (초)
+  OUT_SLOWMO_DURATION: 1.5, // OUT 연출 지속 (초) - 어디서 OUT됐는지 확인
   REMESH_ANIMATION_DURATION: 0.5, // 리메시 애니메이션 (초)
 
   // Network

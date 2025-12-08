@@ -47,8 +47,8 @@ interface UseBallPhysicsOptions {
   initialVelocity?: Vector2D
   /** OUT 콜백 */
   onPlayerOut?: (sideIndex: number) => void
-  /** HIT 콜백 */
-  onPaddleHit?: (sideIndex: number) => void
+  /** HIT 콜백 (sideIndex, paddleOffset) */
+  onPaddleHit?: (sideIndex: number, paddleOffset: number) => void
   /** 게임 일시정지 여부 */
   paused?: boolean
 }
@@ -171,7 +171,7 @@ export function useBallPhysics(options: UseBallPhysicsOptions) {
           newPosition = add(currentPos, multiply(normal, -pushDistance))
 
           collisionDetected = true
-          onPaddleHit?.(i)
+          onPaddleHit?.(i, paddleOffset)
 
           // HIT 이펙트 활성화
           setHitEffectActive(true)
@@ -189,13 +189,7 @@ export function useBallPhysics(options: UseBallPhysicsOptions) {
         for (const sideIdx of [1, 3]) {
           const normal = getSideNormal(sideIdx, renderN)
 
-          // 공이 벽 쪽으로 이동 중인지 체크 (이미 반사되어 멀어지는 중이면 스킵)
-          const velocityTowardsWall = dot(currentVel, normal)
-          if (velocityTowardsWall <= 0) {
-            continue
-          }
-
-          // 실제 벽 선분과의 충돌 체크
+          // 실제 벽 선분과의 충돌 체크 (거리 기반)
           const [v1, v2] = getSideVertices(sideIdx, renderN, arenaRadius)
           const wallCollision = checkBallLineCollision(newPosition, ballRadius, {
             start: v1,
@@ -203,36 +197,38 @@ export function useBallPhysics(options: UseBallPhysicsOptions) {
           })
 
           if (wallCollision.collided) {
+            // 공이 벽 쪽으로 이동 중인지 체크
+            const velocityTowardsWall = dot(newVelocity, normal)
+
+            // 이미 반사되어 멀어지는 중이면 위치만 보정
+            if (velocityTowardsWall <= 0) {
+              // 공을 벽에서 안쪽으로 밀어냄
+              const pushDistance = ballRadius + 2
+              newPosition = add(newPosition, multiply(normal, -pushDistance))
+              continue
+            }
+
             // 벽 반사 (입사각 = 반사각) + 5% 속도 증가
             const wallSpeedBoost = 1.05
             const reflected = {
-              x: (currentVel.x - 2 * velocityTowardsWall * normal.x) * wallSpeedBoost,
-              y: (currentVel.y - 2 * velocityTowardsWall * normal.y) * wallSpeedBoost,
+              x: (newVelocity.x - 2 * velocityTowardsWall * normal.x) * wallSpeedBoost,
+              y: (newVelocity.y - 2 * velocityTowardsWall * normal.y) * wallSpeedBoost,
             }
 
             const speed = magnitude(reflected)
             let dir = normalize(reflected)
 
-            // 최소 각도 보정: 벽에 너무 평행하게 튕기는 것 방지 (루즈한 상황 방지)
-            const normalComponent = Math.abs(dot(dir, normal))
-            const minNormalRatio = GAME_CONSTANTS.WALL_MIN_ANGLE_RATIO
+            // N=2 특수 처리: 벽 반사 시 항상 상/하(패들) 방향으로 강제 편향
+            const verticalComponent = Math.abs(dir.y)
+            const minVerticalRatio = 0.5 // 최소 30도 이상
 
-            if (normalComponent < minNormalRatio) {
-              // 중앙 방향 벡터 (0,0을 향하는 방향)
-              const distToCenter = magnitude(newPosition)
-              if (distToCenter > 0.01) {
-                const toCenter = normalize({
-                  x: -newPosition.x,
-                  y: -newPosition.y,
-                })
-
-                // 중앙 방향으로 편향 (부족한 만큼 비례)
-                const blendFactor = (minNormalRatio - normalComponent) * 1.5
-                dir = normalize({
-                  x: dir.x + toCenter.x * blendFactor,
-                  y: dir.y + toCenter.y * blendFactor,
-                })
-              }
+            if (verticalComponent < minVerticalRatio) {
+              // 공이 너무 수평으로 가면 상/하 방향으로 강제 편향
+              const ySign = dir.y >= 0 ? 1 : -1
+              const targetVertical = minVerticalRatio * ySign
+              const newXSign = dir.x >= 0 ? 1 : -1
+              const newX = Math.sqrt(1 - minVerticalRatio * minVerticalRatio) * newXSign
+              dir = { x: newX, y: targetVertical }
             }
 
             newVelocity = multiplyVec(dir, speed)
@@ -241,7 +237,7 @@ export function useBallPhysics(options: UseBallPhysicsOptions) {
             const pushDistance = ballRadius + 2
             newPosition = add(newPosition, multiply(normal, -pushDistance))
 
-            console.log(`[Ball] 벽 반사 (Side ${sideIdx}), 각도 보정: ${normalComponent < minNormalRatio}`)
+            console.log(`[Ball] 벽 반사 (Side ${sideIdx}), 수직 보정: ${verticalComponent < minVerticalRatio}`)
             collisionDetected = true
             break
           }
@@ -254,12 +250,6 @@ export function useBallPhysics(options: UseBallPhysicsOptions) {
             const actualSideIndex = playerSideIndices[i] // 0 or 2
             const normal = getSideNormal(actualSideIndex, renderN)
 
-            // 공이 이 Side 방향으로 이동 중인지 확인
-            const velocityTowardsSide = dot(currentVel, normal)
-            if (velocityTowardsSide <= 0) {
-              continue
-            }
-
             // 실제 Side 선분과의 충돌 체크
             const [v1, v2] = getSideVertices(actualSideIndex, renderN, arenaRadius)
             const sideCollision = checkBallLineCollision(newPosition, ballRadius, {
@@ -268,6 +258,12 @@ export function useBallPhysics(options: UseBallPhysicsOptions) {
             })
 
             if (sideCollision.collided) {
+              // 공이 이 Side 방향으로 이동 중인지 확인
+              const velocityTowardsSide = dot(newVelocity, normal)
+              if (velocityTowardsSide <= 0) {
+                continue
+              }
+
               // 패들 못 막음 → OUT!
               console.log(`[Ball] OUT! Side ${actualSideIndex} (Player ${i}) - 패들 미스`)
               onPlayerOut?.(i)
