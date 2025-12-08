@@ -147,8 +147,14 @@ export class BallRenderer {
    * 정리
    */
   destroy() {
-    this.ballGraphics.destroy()
-    this.trailGraphics.destroy()
-    this.container.destroy()
+    if (this.ballGraphics && !this.ballGraphics.destroyed) {
+      this.ballGraphics.destroy()
+    }
+    if (this.trailGraphics && !this.trailGraphics.destroyed) {
+      this.trailGraphics.destroy()
+    }
+    if (this.container && !this.container.destroyed) {
+      this.container.destroy()
+    }
   }
 }

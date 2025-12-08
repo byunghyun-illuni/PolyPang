@@ -282,10 +282,15 @@ export async function handleStartGame(
   // 카운트다운 시작
   room.state = RoomState.COUNTDOWN;
 
+  // 3, 2, 1 카운트다운
   for (let count = 3; count >= 1; count--) {
     io.to(roomCode).emit('game_countdown', { count });
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
+
+  // count=0 → "GO!" 표시 후 게임 시작 (클라이언트가 카운트다운 UI 완료할 시간 확보)
+  io.to(roomCode).emit('game_countdown', { count: 0 });
+  await new Promise((resolve) => setTimeout(resolve, 500));
 
   // 게임 시작
   room.state = RoomState.INGAME;

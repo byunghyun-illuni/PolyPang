@@ -29,7 +29,8 @@ export default function MultiplayerGameScreen() {
 
   const [arenaRadius, setArenaRadius] = useState(150)
   const [gameResult, setGameResult] = useState<{ winner: Player; ranking: PlayerRanking[] } | null>(null)
-  const [countdown, setCountdown] = useState<number | null>(null) // 카운트다운 (3, 2, 1, null)
+  const [countdown, setCountdown] = useState<number | null>(0) // 카운트다운 - 초기 진입 시 "GO!" 표시 (0)
+  const countdownRef = useRef<number | null>(0) // 이벤트 핸들러에서 참조용
   const [showFinalEffect, setShowFinalEffect] = useState(false) // 1:1 결승 이펙트
 
   // 패들 위치 상태 (서버에서 받은 값)
@@ -94,9 +95,9 @@ export default function MultiplayerGameScreen() {
     // 방향이 바뀌었을 때만 전송
     if (paddleDir !== lastDirectionRef.current) {
       lastDirectionRef.current = paddleDir
-      socket.emit('paddle_move', { direction: paddleDir })
+      socket.emit('paddle_move', { roomCode, direction: paddleDir })
     }
-  }, [socket, direction, isAlive])
+  }, [socket, direction, isAlive, roomCode])
 
   // Socket 이벤트 리스너
   useEffect(() => {
@@ -106,13 +107,24 @@ export default function MultiplayerGameScreen() {
     }
     console.log('[Game] Registering event listeners, socket.id:', socket.id, 'connected:', socket.connected)
 
+    // 게임 화면 진입 시 방에 rejoin (페이지 이동으로 인한 소켓 재연결 대응)
+    if (roomCode) {
+      console.log('[Game] Rejoining room:', roomCode)
+      socket.emit('rejoin_game', { roomCode }, (response: any) => {
+        console.log('[Game] Rejoin response:', response)
+      })
+    }
+
     // 게임 상태 업데이트 (ball + paddles)
     const handleGameStateUpdate = (update: any) => {
       // 첫 몇 번만 로그
       if (update.tick <= 3) {
         console.log('[Game] game_state_update received, tick:', update.tick, 'ball:', update.ball?.position)
       }
-      if (update.ball) {
+
+      // 카운트다운 중에는 공 위치 업데이트 무시 (공 중앙 고정)
+      // 단, 패들 위치는 업데이트 계속 받음
+      if (update.ball && countdownRef.current === null) {
         // Ball 위치 업데이트
         const scaledX = update.ball.position.x * arenaRadius
         const scaledY = update.ball.position.y * arenaRadius
@@ -146,10 +158,19 @@ export default function MultiplayerGameScreen() {
       playerId: string
       sideIndex: number
       paddleOffset?: number
+      hitPoint?: { x: number; y: number } // 충돌 지점 (서버에서 전송)
     }) => {
       console.log('[Game] Hit Pang:', data)
       setHitEffectActive(true)
       setTimeout(() => setHitEffectActive(false), 100)
+
+      // 공을 hitPoint 위치로 즉시 이동 (서버와 동기화)
+      // 이렇게 해야 hit 모션이 발생할 때 공이 패들 근처에 있음
+      if (data.hitPoint) {
+        const scaledX = data.hitPoint.x * arenaRadius
+        const scaledY = data.hitPoint.y * arenaRadius
+        ballPositionRef.current = { x: scaledX, y: scaledY }
+      }
 
       // PaddleRenderer에 히트 이펙트 표시
       if (paddleRendererRef.current && data.paddleOffset !== undefined) {
@@ -244,6 +265,14 @@ export default function MultiplayerGameScreen() {
       setGameResult(data)
     }
 
+    // game_play: 서버가 틱 루프를 시작할 때 동시에 전송
+    // 이 이벤트를 받으면 클라이언트도 공 업데이트 시작
+    const handleGamePlay = () => {
+      console.log('[Game] game_play received - 게임 시작!')
+      setCountdown(null)
+      countdownRef.current = null
+    }
+
     socket.on('game_state_update', handleGameStateUpdate)
     socket.on('paddle_update', handlePaddleUpdate)
     socket.on('hit_pang', handleHitPang)
@@ -251,6 +280,7 @@ export default function MultiplayerGameScreen() {
     socket.on('arena_remesh_start', handleArenaRemeshStart)
     socket.on('arena_remesh_complete', handleArenaRemeshComplete)
     socket.on('game_over', handleGameOver)
+    socket.on('game_play', handleGamePlay)
 
     return () => {
       socket.off('game_state_update', handleGameStateUpdate)
@@ -260,23 +290,22 @@ export default function MultiplayerGameScreen() {
       socket.off('arena_remesh_start', handleArenaRemeshStart)
       socket.off('arena_remesh_complete', handleArenaRemeshComplete)
       socket.off('game_over', handleGameOver)
+      socket.off('game_play', handleGamePlay)
     }
   }, [socket, room, myUserId]) // gameState, updateGameState, arenaRadius 제거 - 무한 루프 방지
 
-  // 카운트다운 로직
+  // 카운트다운 로직 (리메시 후 카운트다운용)
+  // 초기 진입 시에는 countdown=0("READY")이고, game_play 이벤트로 null 변경
   useEffect(() => {
-    if (countdown === null) return
+    // countdownRef 동기화
+    countdownRef.current = countdown
+
+    if (countdown === null || countdown === 0) return // 0일 때는 game_play 대기
 
     if (countdown > 0) {
       const timer = setTimeout(() => {
         setCountdown(countdown - 1)
       }, 1000)
-      return () => clearTimeout(timer)
-    } else {
-      // 카운트다운 종료 (0 = "GO!")
-      const timer = setTimeout(() => {
-        setCountdown(null)
-      }, 500)
       return () => clearTimeout(timer)
     }
   }, [countdown])
@@ -638,12 +667,12 @@ export default function MultiplayerGameScreen() {
                 </div>
               ) : (
                 <div
-                  className="text-6xl font-bold text-green-400"
+                  className="text-4xl font-bold text-yellow-400 animate-pulse"
                   style={{
-                    textShadow: '0 0 40px rgba(74,222,128,0.8), 0 0 80px rgba(34,197,94,0.6)'
+                    textShadow: '0 0 40px rgba(250,204,21,0.8), 0 0 80px rgba(234,179,8,0.6)'
                   }}
                 >
-                  GO!
+                  READY...
                 </div>
               )}
             </div>

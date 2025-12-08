@@ -26,7 +26,7 @@ export class CollisionDetector {
     arena: Arena,
     paddles: Map<string, Paddle>
   ): CollisionResult {
-    // 각 Side에 대해 충돌 검사
+    // 각 Side에 대해 충돌 검사 (거리 기반 OUT 판정은 Side별로 처리)
     for (const side of arena.sides) {
       const collision = this.checkSideCollision(ball, side, paddles);
       if (collision.type !== CollisionType.NONE) {
@@ -61,25 +61,32 @@ export class CollisionDetector {
     }
 
     // 공이 Side를 향해 이동 중인지 확인 (법선 벡터와 속도 벡터 내적)
+    // 외향 법선: velocityDotNormal > 0 = 벽 쪽으로 이동 중
     const velocityDotNormal = dot(
       { x: ball.velocity.vx, y: ball.velocity.vy },
       side.normal
     );
 
-    // 공이 Side로부터 멀어지는 중이면 무시
-    if (velocityDotNormal > 0) {
+    // 공이 Side로부터 멀어지거나 평행하면 무시 (외향 법선 기준: <= 0)
+    // 클라이언트와 동일한 조건 사용
+    if (velocityDotNormal <= 0) {
       return { type: CollisionType.NONE };
     }
 
     // Side에 플레이어가 있는지 확인
     if (!side.playerId) {
-      // OUT 상태 Side (이미 제거됨)
-      return { type: CollisionType.NONE };
+      // 플레이어 없는 Side = 벽 → WALL_REFLECT
+      return {
+        type: CollisionType.WALL_REFLECT,
+        sideIndex: side.index,
+        hitPoint: { ...ball.position },
+        normal: { ...side.normal },
+      };
     }
 
     const paddle = paddles.get(side.playerId);
     if (!paddle) {
-      // 패들 없음 → SIDE_OUT
+      // 패들 없음 (봇 등) → SIDE_OUT
       return {
         type: CollisionType.SIDE_OUT,
         playerId: side.playerId,
@@ -89,7 +96,9 @@ export class CollisionDetector {
 
     // 패들 범위 계산
     const paddleHalfLength = paddle.length / 2;
-    const paddleCenterPos = paddle.position; // -1 ~ 1
+    // paddle.position: -moveRange ~ moveRange (즉 -beta ~ beta)
+    // 클라이언트는 -1~1 범위를 사용하지만 offset 계산 시 beta를 곱하므로 결과는 동일
+    const paddleCenterPos = paddle.position;
 
     // 패들 중심의 절대 좌표
     const paddleCenterWorld = {
@@ -110,7 +119,10 @@ export class CollisionDetector {
     // 패들 법선 방향으로의 거리
     const distanceToLine = Math.abs(dot(ballToPaddleCenter, side.normal));
 
-    if (Math.abs(projectionOnTangent) <= paddleHalfLength && distanceToLine <= ball.radius + 4) {
+    // 패들 두께 고려 (클라이언트와 일치: ball.radius의 50% 추가)
+    // 클라이언트는 paddleThickness=4, ballRadius≈8 → 50% 비율
+    const paddleThickness = ball.radius * 0.5;
+    if (Math.abs(projectionOnTangent) <= paddleHalfLength && distanceToLine <= ball.radius + paddleThickness) {
       // PADDLE_HIT
       // paddleOffset: -1(왼쪽) ~ 0(중앙) ~ 1(오른쪽)
       const paddleOffset = paddleHalfLength > 0
@@ -127,30 +139,12 @@ export class CollisionDetector {
       };
     }
 
-    // 공이 Side를 통과했는지 확인 (OUT 판정)
-    // Ball이 Side 경계선 너머로 이동했으면 OUT
-    const ballCenterToSideCenter = {
-      x: ball.position.x - side.center.x,
-      y: ball.position.y - side.center.y,
-    };
-
-    const distanceFromCenter = dot(ballCenterToSideCenter, side.normal);
-
-    // 공이 Side 바깥으로 나갔으면 OUT
-    if (distanceFromCenter > ball.radius) {
-      return {
-        type: CollisionType.SIDE_OUT,
-        playerId: side.playerId,
-        sideIndex: side.index,
-      };
-    }
-
-    // 벽 반사 (패들 없는 Side 구간)
+    // 패들 범위 밖에서 Side에 닿음 → OUT! (패들이 있는 Side에서 패들을 못 막음)
+    // 공이 Side 선분 근처에 있음 (distanceToSide <= ball.radius 조건 이미 통과)
     return {
-      type: CollisionType.WALL_REFLECT,
+      type: CollisionType.SIDE_OUT,
+      playerId: side.playerId,
       sideIndex: side.index,
-      hitPoint: { ...ball.position },
-      normal: { ...side.normal },
     };
   }
 

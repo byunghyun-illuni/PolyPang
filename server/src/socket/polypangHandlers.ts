@@ -87,6 +87,36 @@ export function setupPolyPangHandlers(io: SocketIOServer, socket: Socket): void 
     handleStartGame(io, socket, roomCode, callback);
   });
 
+  /**
+   * rejoin_game - 게임 화면에서 소켓 재연결 시 방에 다시 join
+   */
+  socket.on('rejoin_game', (data: { roomCode: string }, callback) => {
+    const { roomCode } = data;
+    console.log(`[rejoin_game] ${socket.id}: roomCode=${roomCode}`);
+
+    const room = rooms.get(roomCode);
+    if (!room) {
+      console.log(`[rejoin_game] Room ${roomCode} not found`);
+      if (callback) callback({ success: false, error: 'Room not found' });
+      return;
+    }
+
+    // Socket Room에 join
+    socket.join(roomCode);
+
+    // 현재 게임 상태 전송
+    const engine = gameEngines.get(roomCode);
+    if (engine) {
+      const gameState = engine.getGameState();
+      if (gameState) {
+        socket.emit('game_state_sync', { gameState });
+      }
+    }
+
+    console.log(`[rejoin_game] ${socket.id} rejoined room ${roomCode}`);
+    if (callback) callback({ success: true });
+  });
+
   // ==================== 게임 입력 ====================
 
   /**

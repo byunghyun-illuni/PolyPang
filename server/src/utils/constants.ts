@@ -71,6 +71,9 @@ export const ROOM_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // I, O, 0, 1
  *
  * 핵심 공식: alpha + beta = 1
  * - 이 조건을 만족해야 패들 끝점이 Side 끝점까지 도달 가능
+ * - 패들 중심 이동범위(beta/2) + 패들 절반 길이(alpha/2) = Side 절반(0.5)
+ *
+ * 주의: 클라이언트(client/src/utils/constants.ts)와 동일하게 유지해야 함!
  *
  * @param n - 플레이어 수 (2~8)
  * @returns { alpha: 패들 길이 비율, beta: 이동 범위 비율, renderN: 렌더링용 N }
@@ -85,34 +88,34 @@ export function getPaddleRatios(n: number): {
     const alpha = 0.5; // 매우 큰 패들 (50%)
     return {
       alpha,
-      beta: 1 - alpha, // 0.5
-      renderN: 4,
+      beta: 1 - alpha, // 0.5 (alpha + beta = 1)
+      renderN: 4, // 정사각형으로 렌더링
     };
   }
 
   // N=3: 정삼각형, 큰 패들
   if (n === 3) {
-    const alpha = 0.4;
+    const alpha = 0.6; // 60% 패들 (클라이언트와 일치)
     return {
       alpha,
-      beta: 1 - alpha,
+      beta: 1 - alpha, // 0.4 (alpha + beta = 1)
       renderN: 3,
     };
   }
 
   // N=4: 정사각형
   if (n === 4) {
-    const alpha = 0.35;
+    const alpha = 0.35; // 35% 패들
     return {
       alpha,
-      beta: 1 - alpha,
+      beta: 1 - alpha, // 0.65 (alpha + beta = 1)
       renderN: 4,
     };
   }
 
   // N=5: 정오각형 (패들 1.5배 확대 - 속도감 승부)
   if (n === 5) {
-    const alpha = 0.45;
+    const alpha = 0.45; // 45% 패들
     return {
       alpha,
       beta: 1 - alpha,
@@ -122,7 +125,7 @@ export function getPaddleRatios(n: number): {
 
   // N=6: 정육각형 (패들 확대 - 속도감 승부)
   if (n === 6) {
-    const alpha = 0.45;
+    const alpha = 0.45; // 45% 패들
     return {
       alpha,
       beta: 1 - alpha,
@@ -132,7 +135,7 @@ export function getPaddleRatios(n: number): {
 
   // N=7: 정칠각형 (패들 확대)
   if (n === 7) {
-    const alpha = 0.42;
+    const alpha = 0.5; // 50% 패들 (클라이언트와 일치)
     return {
       alpha,
       beta: 1 - alpha,
@@ -141,7 +144,7 @@ export function getPaddleRatios(n: number): {
   }
 
   // N≥8: 정팔각형 이상 (패들 확대)
-  const alpha = 0.4;
+  const alpha = 0.5; // 50% 패들 (클라이언트와 일치)
   return {
     alpha,
     beta: 1 - alpha,

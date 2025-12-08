@@ -28,6 +28,9 @@ export class PhysicsEngine {
   /**
    * 물리 시뮬레이션 1 틱 실행
    *
+   * 서브스텝을 사용해 빠른 공이 패들을 뚫고 지나가는 것을 방지
+   * - 공의 이동 거리가 충돌 범위보다 크면 여러 서브스텝으로 나눠서 처리
+   *
    * @param gameState - 게임 상태
    * @returns 충돌 결과
    */
@@ -35,20 +38,46 @@ export class PhysicsEngine {
     // 1. 패들 위치 업데이트
     this.updatePaddles(gameState);
 
-    // 2. 공 위치 업데이트
-    this.updateBall(gameState.ball, this.dt);
+    // 2. 서브스텝 계산 (빠른 공 대응)
+    // 공의 한 틱 이동 거리 계산
+    const ball = gameState.ball;
+    const speed = Math.sqrt(ball.velocity.vx ** 2 + ball.velocity.vy ** 2);
+    const moveDistance = speed * this.dt;
 
-    // 3. 충돌 감지
-    const collision = this.collisionDetector.detectCollision(
-      gameState.ball,
-      gameState.arena,
-      gameState.paddles
-    );
+    // 충돌 감지 범위 (공 반지름 + 여유)
+    const collisionRange = ball.radius * 1.5;
 
-    // 4. 충돌 처리
-    this.handleCollision(gameState, collision);
+    // 서브스텝 수 결정 (이동 거리가 충돌 범위보다 크면 분할)
+    const numSubsteps = Math.max(1, Math.ceil(moveDistance / collisionRange));
+    const subDt = this.dt / numSubsteps;
 
-    return collision;
+    let lastCollision: CollisionResult = { type: CollisionType.NONE };
+
+    // 3. 서브스텝 실행
+    for (let i = 0; i < numSubsteps; i++) {
+      // 공 위치 업데이트 (서브스텝)
+      this.updateBall(ball, subDt);
+
+      // 충돌 감지
+      const collision = this.collisionDetector.detectCollision(
+        ball,
+        gameState.arena,
+        gameState.paddles
+      );
+
+      // 충돌 발생 시 처리하고 루프 종료
+      if (collision.type !== CollisionType.NONE) {
+        this.handleCollision(gameState, collision);
+        lastCollision = collision;
+
+        // OUT이면 즉시 종료
+        if (collision.type === CollisionType.SIDE_OUT) {
+          break;
+        }
+      }
+    }
+
+    return lastCollision;
   }
 
   /**
@@ -299,8 +328,8 @@ export class PhysicsEngine {
       attempts++;
     }
 
-    // 초기 속도
-    const speed = GAME_CONSTANTS.BALL_INITIAL_SPEED * radius;
+    // 초기 속도 (클라이언트 ArenaTest와 일치: BALL_FIRST_TURN_SPEED 사용)
+    const speed = GAME_CONSTANTS.BALL_FIRST_TURN_SPEED;
     const velocity = {
       vx: speed * Math.cos(angle),
       vy: speed * Math.sin(angle),

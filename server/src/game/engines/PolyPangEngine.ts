@@ -16,7 +16,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { GameState, Player, PlayerStats } from '../../types/game.types';
 import { PhysicsEngine } from '../managers/PhysicsEngine';
 import { ArenaManager } from '../managers/ArenaManager';
-import { CollisionType } from '../../types/enums';
+import { CollisionType, PlayerState } from '../../types/enums';
 import { GAME_CONSTANTS } from '../../utils/constants';
 import { calculateSideLength } from '../../utils/geometry';
 
@@ -25,6 +25,7 @@ export class PolyPangEngine {
   private roomCode: string;
   private gameState: GameState | null = null;
   private tickInterval: NodeJS.Timeout | null = null;
+  private players: Map<string, Player> = new Map(); // 플레이어 정보 저장
 
   private physicsEngine: PhysicsEngine;
   private arenaManager: ArenaManager;
@@ -46,6 +47,9 @@ export class PolyPangEngine {
    * @param players - 플레이어 목록
    */
   start(players: Map<string, Player>): void {
+    // 플레이어 정보 저장 (게임 결과에서 사용)
+    this.players = new Map(players);
+
     // 1. 실제 플레이어 목록
     const realPlayerIds = Array.from(players.keys());
     const realPlayerCount = realPlayerIds.length;
@@ -57,12 +61,27 @@ export class PolyPangEngine {
     // 3. 플레이어 배치: 실제 플레이어를 균등하게 배치하고 사이에 봇 배치
     const allPlayerIds = this.distributePlayersAndBots(realPlayerIds, n);
 
-    // 4. 실제 플레이어에게 올바른 sideIndex 할당
+    // 4. 실제 플레이어에게 올바른 sideIndex 할당 & 봇 플레이어 추가
     for (let i = 0; i < n; i++) {
       const playerId = allPlayerIds[i];
       const player = players.get(playerId);
       if (player) {
         player.sideIndex = i;
+      } else if (playerId.startsWith(GAME_CONSTANTS.BOT_ID_PREFIX)) {
+        // 봇 플레이어 정보 생성
+        const botNumber = playerId.replace(GAME_CONSTANTS.BOT_ID_PREFIX, '');
+        const now = new Date().toISOString();
+        this.players.set(playerId, {
+          userId: playerId,
+          nickname: `봇 ${botNumber}`,
+          state: PlayerState.INGAME_ALIVE,
+          sideIndex: i,
+          color: '#888888', // 봇은 회색
+          isReady: true,
+          isHost: false,
+          joinedAt: now,
+          lastActiveAt: now,
+        });
       }
     }
 
@@ -100,13 +119,20 @@ export class PolyPangEngine {
 
     console.log(`[PolyPang] 게임 시작: ${realPlayerCount}명 플레이어 + ${botCount}명 봇 = 8각형`);
 
-    // 2. game_started 이벤트 전송
+    // 2. game_started 이벤트 전송 (클라이언트가 게임 화면으로 전환)
     this.io.to(this.roomCode).emit('game_started', {
       gameState: this.serializeGameState(this.gameState),
     });
 
-    // 3. 30fps 틱 루프 시작
-    this.startTickLoop();
+    // 3. 클라이언트 화면 전환 대기 후 game_play 이벤트 + 틱 루프 시작
+    // 서버와 클라이언트가 동시에 시작하도록 game_play 이벤트로 동기화
+    setTimeout(() => {
+      if (this.gameState) {
+        console.log('[PolyPang] game_play 이벤트 전송 + 틱 루프 시작!');
+        this.io.to(this.roomCode).emit('game_play'); // 클라이언트에 "시작!" 신호
+        this.startTickLoop();
+      }
+    }, 1500);
   }
 
   /**
@@ -197,8 +223,16 @@ export class PolyPangEngine {
 
     switch (collision.type) {
       case CollisionType.PADDLE_HIT:
-        // HIT Pang 이벤트 전송
-        this.io.to(this.roomCode).emit('hit_pang', collision);
+        // HIT Pang 이벤트 전송 (hitPoint 정규화)
+        const arenaRadius = this.gameState.arena.radius;
+        const normalizedCollision = {
+          ...collision,
+          hitPoint: collision.hitPoint ? {
+            x: collision.hitPoint.x / arenaRadius,
+            y: collision.hitPoint.y / arenaRadius,
+          } : undefined,
+        };
+        this.io.to(this.roomCode).emit('hit_pang', normalizedCollision);
 
         // 플레이어 히트 카운트 증가
         const stats = this.gameState.playerStats.get(collision.playerId);
@@ -283,6 +317,7 @@ export class PolyPangEngine {
     }
 
     // 7. arena_remesh_start 이벤트 (새 Arena + 새 공 위치)
+    // 클라이언트는 이 이벤트 후 카운트다운(3초) 시작
     this.io.to(this.roomCode).emit('arena_remesh_start', {
       newArena: this.gameState.arena,
       newBall: this.gameState.ball,
@@ -291,9 +326,9 @@ export class PolyPangEngine {
       })),
     });
 
-    // 8. 리메시 애니메이션 대기
+    // 8. 클라이언트 카운트다운 대기 (3초 카운트다운 + 여유)
     await new Promise((resolve) =>
-      setTimeout(resolve, GAME_CONSTANTS.REMESH_ANIMATION_DURATION * 1000)
+      setTimeout(resolve, 3500)
     );
 
     // 9. arena_remesh_complete 이벤트
@@ -301,7 +336,9 @@ export class PolyPangEngine {
       outPlayerId: playerId,
     });
 
-    // 10. 게임 루프 재시작
+    // 10. game_play 이벤트 + 게임 루프 재시작
+    console.log('[PolyPang] 리메시 후 game_play 전송 + 틱 루프 재시작');
+    this.io.to(this.roomCode).emit('game_play');
     this.startTickLoop();
   }
 
@@ -324,6 +361,17 @@ export class PolyPangEngine {
   }
 
   /**
+   * 플레이어 정보를 클라이언트 형식으로 변환
+   */
+  private getPlayerInfo(playerId: string): { userId: string; nickname: string } {
+    const player = this.players.get(playerId);
+    return {
+      userId: playerId,
+      nickname: player?.nickname || playerId,
+    };
+  }
+
+  /**
    * 게임 결과 계산
    */
   private calculateGameResult(winnerId: string | undefined): any {
@@ -340,7 +388,7 @@ export class PolyPangEngine {
     if (winnerId) {
       const winnerStats = this.gameState.playerStats.get(winnerId);
       ranking.push({
-        playerId: winnerId,
+        player: this.getPlayerInfo(winnerId),
         rank: 1,
         survivalTime: winnerStats?.survivalTime || totalDuration,
         hitCount: winnerStats?.hitCount || 0,
@@ -354,7 +402,7 @@ export class PolyPangEngine {
       const stats = this.gameState.playerStats.get(playerId);
 
       ranking.push({
-        playerId,
+        player: this.getPlayerInfo(playerId),
         rank: ranking.length + 1,
         survivalTime: stats?.survivalTime || 0,
         hitCount: stats?.hitCount || 0,
@@ -371,8 +419,11 @@ export class PolyPangEngine {
       };
     }
 
+    // winner도 플레이어 정보로 변환
+    const winnerInfo = winnerId ? this.getPlayerInfo(winnerId) : null;
+
     return {
-      winner: winnerId,
+      winner: winnerInfo,
       ranking,
       stats: {
         totalDuration,
@@ -399,10 +450,15 @@ export class PolyPangEngine {
       velocity: paddle.velocity,
     }));
 
+    // 공 위치를 정규화 (arena.radius로 나눔) - 클라이언트에서 arenaRadius 곱해서 사용
+    const arenaRadius = this.gameState.arena.radius;
     this.io.to(this.roomCode).emit('game_state_update', {
       tick: this.gameState.tick,
       ball: {
-        position: this.gameState.ball.position,
+        position: {
+          x: this.gameState.ball.position.x / arenaRadius,
+          y: this.gameState.ball.position.y / arenaRadius,
+        },
         velocity: this.gameState.ball.velocity,
         speed: this.gameState.ball.speed,
       },
@@ -467,5 +523,41 @@ export class PolyPangEngine {
    */
   getGameState(): GameState | null {
     return this.gameState;
+  }
+
+  /**
+   * 플레이어 ID 업데이트 (재연결 시)
+   */
+  updatePlayerId(oldId: string, newId: string): void {
+    if (!this.gameState) return;
+
+    // alivePlayers 업데이트
+    const aliveIndex = this.gameState.alivePlayers.indexOf(oldId);
+    if (aliveIndex !== -1) {
+      this.gameState.alivePlayers[aliveIndex] = newId;
+    }
+
+    // outPlayers 업데이트
+    const outIndex = this.gameState.outPlayers.indexOf(oldId);
+    if (outIndex !== -1) {
+      this.gameState.outPlayers[outIndex] = newId;
+    }
+
+    // paddles Map 업데이트
+    const paddle = this.gameState.paddles.get(oldId);
+    if (paddle) {
+      this.gameState.paddles.delete(oldId);
+      paddle.playerId = newId;
+      this.gameState.paddles.set(newId, paddle);
+    }
+
+    // arena.sides 업데이트
+    for (const side of this.gameState.arena.sides) {
+      if (side.playerId === oldId) {
+        side.playerId = newId;
+      }
+    }
+
+    console.log(`[PolyPang] Player ID updated: ${oldId} → ${newId}`);
   }
 }

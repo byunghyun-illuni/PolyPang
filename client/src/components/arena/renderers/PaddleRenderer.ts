@@ -296,8 +296,14 @@ export class PaddleRenderer {
       this.ticker = null
     }
     this.hitEffects = []
-    this.graphics.destroy()
-    this.hitEffectGraphics.destroy()
-    this.container.destroy()
+    if (this.graphics && !this.graphics.destroyed) {
+      this.graphics.destroy()
+    }
+    if (this.hitEffectGraphics && !this.hitEffectGraphics.destroyed) {
+      this.hitEffectGraphics.destroy()
+    }
+    if (this.container && !this.container.destroyed) {
+      this.container.destroy()
+    }
   }
 }

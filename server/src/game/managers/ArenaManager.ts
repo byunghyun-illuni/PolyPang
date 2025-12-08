@@ -10,7 +10,7 @@
 
 import { Arena, GameState } from '../../types/game.types';
 import { createArena, calculateSideLength } from '../../utils/geometry';
-import { GAME_CONSTANTS } from '../../utils/constants';
+import { GAME_CONSTANTS, getPaddleRatios } from '../../utils/constants';
 import { PhysicsEngine } from './PhysicsEngine';
 
 export class ArenaManager {
@@ -23,6 +23,8 @@ export class ArenaManager {
   /**
    * 초기 Arena 생성 (게임 시작 시)
    *
+   * N=2 특수 케이스: 4각형 Arena 생성, Side 0, 2에만 플레이어 배치
+   *
    * @param playerIds - 플레이어 ID 목록 (순서대로 Side 할당)
    * @param radius - 반지름
    * @returns Arena
@@ -32,13 +34,26 @@ export class ArenaManager {
     radius: number = GAME_CONSTANTS.ARENA_BASE_RADIUS
   ): Arena {
     const n = playerIds.length;
+    const { renderN } = getPaddleRatios(n);
+
+    // N=2 특수 케이스: 4각형 Arena, Side 0, 2에 플레이어 배치
+    if (n === 2 && renderN === 4) {
+      const sidePlayerIds: (string | undefined)[] = [
+        playerIds[0], // Side 0: 플레이어 1
+        undefined,    // Side 1: 벽
+        playerIds[1], // Side 2: 플레이어 2
+        undefined,    // Side 3: 벽
+      ];
+      return createArena(renderN, radius, sidePlayerIds as string[]);
+    }
+
     return createArena(n, radius, playerIds);
   }
 
   /**
    * Arena 리메시 (OUT 발생 시)
    *
-   * - 정N각형 → 정(N-1)각형
+   * - 정N각형 → 정(N-1)각형 (renderN 고려)
    * - 남은 플레이어들을 새 Side에 재배치
    * - Paddle 재초기화
    * - 공 위치/속도 초기화 (중앙에서 새로 시작)
@@ -59,29 +74,43 @@ export class ArenaManager {
       return;
     }
 
-    // 3. 새 Arena 생성
-    const newArena = createArena(
-      n,
-      gameState.arena.radius,
-      gameState.alivePlayers
-    );
+    // 3. 새 Arena 생성 (renderN 고려)
+    const { renderN } = getPaddleRatios(n);
+
+    let newArena: Arena;
+    if (n === 2 && renderN === 4) {
+      // N=2 특수 케이스: 4각형 Arena, Side 0, 2에 플레이어 배치
+      const sidePlayerIds: (string | undefined)[] = [
+        gameState.alivePlayers[0], // Side 0
+        undefined,                  // Side 1: 벽
+        gameState.alivePlayers[1], // Side 2
+        undefined,                  // Side 3: 벽
+      ];
+      newArena = createArena(renderN, gameState.arena.radius, sidePlayerIds as string[]);
+    } else {
+      newArena = createArena(n, gameState.arena.radius, gameState.alivePlayers);
+    }
 
     gameState.arena = newArena;
 
     // 4. 패들 재초기화
     const newPaddles = new Map();
-    const sideLength = calculateSideLength(gameState.arena.radius, n);
+    const sideLength = calculateSideLength(gameState.arena.radius, renderN);
+
+    // N=2 특수 케이스: Side 0, 2에 배치
+    const sideIndices = (n === 2 && renderN === 4) ? [0, 2] : Array.from({ length: n }, (_, i) => i);
 
     for (let i = 0; i < gameState.alivePlayers.length; i++) {
       const playerId = gameState.alivePlayers[i];
-      const paddle = this.physicsEngine.initPaddle(playerId, i, sideLength, n);
+      const sideIndex = sideIndices[i];
+      const paddle = this.physicsEngine.initPaddle(playerId, sideIndex, sideLength, renderN);
       newPaddles.set(playerId, paddle);
     }
 
     gameState.paddles = newPaddles;
 
     // 5. 공 위치/속도 초기화 (중앙에서 새로 시작)
-    const newBall = this.physicsEngine.initBall(gameState.arena.radius, n);
+    const newBall = this.physicsEngine.initBall(gameState.arena.radius, renderN);
     // hitCount는 유지 (속도 증가 유지)
     newBall.hitCount = gameState.ball.hitCount;
     newBall.lastHitBy = undefined;

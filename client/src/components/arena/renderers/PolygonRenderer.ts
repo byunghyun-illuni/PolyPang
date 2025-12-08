@@ -126,8 +126,10 @@ export class PolygonRenderer {
    */
   private clearLabels() {
     this.labels.forEach((label) => {
-      this.container.removeChild(label)
-      label.destroy()
+      if (label && !label.destroyed) {
+        this.container.removeChild(label)
+        label.destroy()
+      }
     })
     this.labels = []
   }
@@ -152,7 +154,11 @@ export class PolygonRenderer {
    */
   destroy() {
     this.clearLabels()
-    this.graphics.destroy()
-    this.container.destroy()
+    if (this.graphics && !this.graphics.destroyed) {
+      this.graphics.destroy()
+    }
+    if (this.container && !this.container.destroyed) {
+      this.container.destroy()
+    }
   }
 }

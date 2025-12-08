@@ -41,6 +41,10 @@ export function createArena(
 /**
  * 정N각형 꼭짓점 계산
  *
+ * 클라이언트(client/src/physics/geometry.ts의 getAllVertices)와 일치해야 함!
+ * - Side i의 중심 각도 = (360/n) * i - 90°
+ * - 정점은 Side 중심에서 ±(180/n)° 위치
+ *
  * @param n - 변의 개수
  * @param radius - 반지름
  * @param rotation - 회전 각도 (라디안)
@@ -52,9 +56,10 @@ export function calculateVertices(
   rotation: number = -Math.PI / 2
 ): Vector2D[] {
   const vertices: Vector2D[] = [];
+  const halfAngle = Math.PI / n; // 클라이언트와 일치: -180/n 만큼 오프셋
 
   for (let i = 0; i < n; i++) {
-    const angle = (2 * Math.PI * i) / n + rotation;
+    const angle = (2 * Math.PI * i) / n + rotation - halfAngle;
     vertices.push({
       x: radius * Math.cos(angle),
       y: radius * Math.sin(angle),
@@ -91,7 +96,8 @@ export function calculateSides(
     const edgeVector = { x: end.x - start.x, y: end.y - start.y };
     const edgeLength = Math.sqrt(edgeVector.x ** 2 + edgeVector.y ** 2);
 
-    // 법선 벡터: 시계방향 90도 회전 → (dx, dy) => (dy, -dx)
+    // 법선 벡터: 시계방향 90도 회전 → (dx, dy) => (dy, -dx) → 외향 법선
+    // 꼭짓점이 반시계방향으로 나열되면 오른쪽(시계방향 회전)이 외향
     const normal = {
       x: edgeVector.y / edgeLength,
       y: -edgeVector.x / edgeLength,
