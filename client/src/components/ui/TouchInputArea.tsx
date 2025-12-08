@@ -45,13 +45,13 @@ export default function TouchInputArea({
   }
 
   return (
-    <div className="flex h-full select-none">
+    <div className="relative flex h-full select-none">
       {/* 왼쪽 터치 영역 */}
       <div
         className={`flex-1 flex items-center justify-center transition-all ${
           isTouching && touchingDirection === 'LEFT'
-            ? 'bg-purple-500/30'
-            : 'bg-transparent hover:bg-purple-500/10'
+            ? 'bg-purple-500/20'
+            : 'bg-transparent hover:bg-purple-500/5'
         }`}
         onTouchStart={handleLeftTouch}
         onMouseDown={handleLeftTouch}
@@ -59,15 +59,15 @@ export default function TouchInputArea({
         onMouseUp={handleTouchEndOrLeave}
         onMouseLeave={handleTouchEndOrLeave}
       >
-        <div className="text-6xl opacity-20">◀</div>
+        <div className="text-3xl text-gray-500/30">◀</div>
       </div>
 
       {/* 오른쪽 터치 영역 */}
       <div
         className={`flex-1 flex items-center justify-center transition-all ${
           isTouching && touchingDirection === 'RIGHT'
-            ? 'bg-blue-500/30'
-            : 'bg-transparent hover:bg-blue-500/10'
+            ? 'bg-blue-500/20'
+            : 'bg-transparent hover:bg-blue-500/5'
         }`}
         onTouchStart={handleRightTouch}
         onMouseDown={handleRightTouch}
@@ -75,12 +75,12 @@ export default function TouchInputArea({
         onMouseUp={handleTouchEndOrLeave}
         onMouseLeave={handleTouchEndOrLeave}
       >
-        <div className="text-6xl opacity-20">▶</div>
+        <div className="text-3xl text-gray-500/30">▶</div>
       </div>
 
-      {/* PC 키보드 가이드 */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div className="px-4 py-2 bg-black/50 text-white text-sm rounded-lg opacity-40">
+      {/* PC 키보드 가이드 - 하단에 고정 */}
+      <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
+        <div className="px-3 py-1 text-gray-500/50 text-xs">
           PC: A/D 또는 ←/→
         </div>
       </div>

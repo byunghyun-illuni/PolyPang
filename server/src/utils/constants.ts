@@ -16,8 +16,8 @@ export const GAME_CONSTANTS = {
   PADDLE_DECELERATION: 0.85,       // 감속 계수
 
   // Ball
-  BALL_INITIAL_SPEED: 0.3,         // 초기 속도 (R/초)
-  BALL_FIRST_TURN_SPEED: 50,       // 첫 턴 느린 속도
+  BALL_INITIAL_SPEED: 0.5,         // 초기 속도 (R/초) - 빠르게 시작
+  BALL_FIRST_TURN_SPEED: 75,       // 첫 턴 속도 (기존 50)
   BALL_NORMAL_SPEED: 100,          // 첫 HIT 후 정상 속도
   BALL_SPEED_INCREMENT: 1.08,      // HIT마다 8% 증가
   BALL_RADIUS_RATIO: 0.03,         // Arena 대비 공 크기
@@ -41,6 +41,7 @@ export const GAME_CONSTANTS = {
 
   // Physics
   DT: 1 / 30,                      // 물리 틱 간격 (초)
+  WALL_MIN_ANGLE_RATIO: 0.342,     // 벽 반사 최소 각도 (sin(20°), 루즈한 상황 방지)
 } as const;
 
 /**
@@ -107,9 +108,9 @@ export function getPaddleRatios(n: number): {
     };
   }
 
-  // N=5: 정오각형
+  // N=5: 정오각형 (패들 1.5배 확대 - 속도감 승부)
   if (n === 5) {
-    const alpha = 0.3;
+    const alpha = 0.45;
     return {
       alpha,
       beta: 1 - alpha,
@@ -117,9 +118,9 @@ export function getPaddleRatios(n: number): {
     };
   }
 
-  // N=6: 정육각형
+  // N=6: 정육각형 (패들 확대 - 속도감 승부)
   if (n === 6) {
-    const alpha = 0.25;
+    const alpha = 0.45;
     return {
       alpha,
       beta: 1 - alpha,
@@ -127,9 +128,9 @@ export function getPaddleRatios(n: number): {
     };
   }
 
-  // N=7: 정칠각형
+  // N=7: 정칠각형 (패들 확대)
   if (n === 7) {
-    const alpha = 0.22;
+    const alpha = 0.42;
     return {
       alpha,
       beta: 1 - alpha,
@@ -137,8 +138,8 @@ export function getPaddleRatios(n: number): {
     };
   }
 
-  // N≥8: 정팔각형 이상
-  const alpha = 0.2;
+  // N≥8: 정팔각형 이상 (패들 확대)
+  const alpha = 0.4;
   return {
     alpha,
     beta: 1 - alpha,

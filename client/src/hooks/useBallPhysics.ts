@@ -205,16 +205,43 @@ export function useBallPhysics(options: UseBallPhysicsOptions) {
           if (wallCollision.collided) {
             // 벽 반사 (입사각 = 반사각) + 5% 속도 증가
             const wallSpeedBoost = 1.05
-            newVelocity = {
+            const reflected = {
               x: (currentVel.x - 2 * velocityTowardsWall * normal.x) * wallSpeedBoost,
               y: (currentVel.y - 2 * velocityTowardsWall * normal.y) * wallSpeedBoost,
             }
+
+            const speed = magnitude(reflected)
+            let dir = normalize(reflected)
+
+            // 최소 각도 보정: 벽에 너무 평행하게 튕기는 것 방지 (루즈한 상황 방지)
+            const normalComponent = Math.abs(dot(dir, normal))
+            const minNormalRatio = GAME_CONSTANTS.WALL_MIN_ANGLE_RATIO
+
+            if (normalComponent < minNormalRatio) {
+              // 중앙 방향 벡터 (0,0을 향하는 방향)
+              const distToCenter = magnitude(newPosition)
+              if (distToCenter > 0.01) {
+                const toCenter = normalize({
+                  x: -newPosition.x,
+                  y: -newPosition.y,
+                })
+
+                // 중앙 방향으로 편향 (부족한 만큼 비례)
+                const blendFactor = (minNormalRatio - normalComponent) * 1.5
+                dir = normalize({
+                  x: dir.x + toCenter.x * blendFactor,
+                  y: dir.y + toCenter.y * blendFactor,
+                })
+              }
+            }
+
+            newVelocity = multiplyVec(dir, speed)
 
             // 공을 벽에서 안쪽으로 밀어냄
             const pushDistance = ballRadius + 2
             newPosition = add(newPosition, multiply(normal, -pushDistance))
 
-            console.log(`[Ball] 벽 반사 (Side ${sideIdx})`)
+            console.log(`[Ball] 벽 반사 (Side ${sideIdx}), 각도 보정: ${normalComponent < minNormalRatio}`)
             collisionDetected = true
             break
           }

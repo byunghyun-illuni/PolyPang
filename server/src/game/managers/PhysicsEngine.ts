@@ -185,6 +185,9 @@ export class PhysicsEngine {
   /**
    * 벽 반사 처리
    *
+   * - 기본 반사 적용
+   * - 최소 각도 보정: 벽에 너무 평행하게 튕기는 것 방지 (루즈한 상황 방지)
+   *
    * @param ball - 공
    * @param collision - 충돌 결과
    */
@@ -192,14 +195,44 @@ export class PhysicsEngine {
     ball: Ball,
     collision: Extract<CollisionResult, { type: CollisionType.WALL_REFLECT }>
   ): void {
-    // 반사 (속도 증가 없음)
+    // 반사
     const reflectedVelocity = reflect(
       { x: ball.velocity.vx, y: ball.velocity.vy },
       collision.normal
     );
 
-    ball.velocity.vx = reflectedVelocity.x;
-    ball.velocity.vy = reflectedVelocity.y;
+    const speed = magnitude(reflectedVelocity);
+    let dir = normalize(reflectedVelocity);
+
+    // 최소 각도 보정: 벽에 너무 평행하게 튕기는 것 방지
+    // 법선 방향 속도 비율 (0~1, 1이면 수직, 0이면 평행)
+    const normalComponent = Math.abs(
+      dir.x * collision.normal.x + dir.y * collision.normal.y
+    );
+
+    // 최소 20도 보장 (sin(20°) ≈ 0.342)
+    const minNormalRatio = GAME_CONSTANTS.WALL_MIN_ANGLE_RATIO;
+
+    if (normalComponent < minNormalRatio) {
+      // 중앙 방향 벡터 (0,0을 향하는 방향)
+      const distToCenter = magnitude(ball.position);
+      if (distToCenter > 0.01) {
+        const toCenter = normalize({
+          x: -ball.position.x,
+          y: -ball.position.y,
+        });
+
+        // 중앙 방향으로 편향 (부족한 만큼 비례)
+        const blendFactor = (minNormalRatio - normalComponent) * 1.5;
+        dir = normalize({
+          x: dir.x + toCenter.x * blendFactor,
+          y: dir.y + toCenter.y * blendFactor,
+        });
+      }
+    }
+
+    ball.velocity.vx = dir.x * speed;
+    ball.velocity.vy = dir.y * speed;
   }
 
   /**
