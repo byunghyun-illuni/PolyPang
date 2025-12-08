@@ -57,18 +57,21 @@ export function setupPolyPangHandlers(io: SocketIOServer, socket: Socket): void 
   /**
    * toggle_ready - Ready 토글
    */
-  socket.on('toggle_ready', (data) => {
-    console.log(`[toggle_ready] ${socket.id}:`, data);
-    const { roomCode } = data;
+  socket.on('toggle_ready', () => {
+    // socket.rooms에서 roomCode 찾기 (socket.id 제외한 첫 번째 room)
+    const roomCode = [...socket.rooms].find((r) => r !== socket.id);
+    console.log(`[toggle_ready] ${socket.id}: roomCode=${roomCode}`);
+    if (!roomCode) return;
     handleToggleReady(io, socket, roomCode);
   });
 
   /**
    * start_game - 게임 시작 (Host 전용)
    */
-  socket.on('start_game', (data, callback) => {
-    console.log(`[start_game] ${socket.id}:`, data);
-    const { roomCode } = data;
+  socket.on('start_game', (callback) => {
+    const roomCode = [...socket.rooms].find((r) => r !== socket.id);
+    console.log(`[start_game] ${socket.id}: roomCode=${roomCode}`);
+    if (!roomCode) return;
     handleStartGame(io, socket, roomCode, callback);
   });
 
