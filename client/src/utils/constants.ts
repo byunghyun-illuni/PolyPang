@@ -105,7 +105,7 @@ export function getPaddleRatios(n: number): {
 
   // N=3: 정삼각형, 큰 패들
   if (n === 3) {
-    const alpha = 0.4 // 40% 패들
+    const alpha = 0.6 // 60% 패들
     return {
       alpha,
       beta: 1 - alpha, // 0.6 (alpha + beta = 1)

@@ -57,6 +57,15 @@ export class PolyPangEngine {
     // 3. 플레이어 배치: 실제 플레이어를 균등하게 배치하고 사이에 봇 배치
     const allPlayerIds = this.distributePlayersAndBots(realPlayerIds, n);
 
+    // 4. 실제 플레이어에게 올바른 sideIndex 할당
+    for (let i = 0; i < n; i++) {
+      const playerId = allPlayerIds[i];
+      const player = players.get(playerId);
+      if (player) {
+        player.sideIndex = i;
+      }
+    }
+
     const arena = this.arenaManager.createInitialArena(allPlayerIds);
     const ball = this.physicsEngine.initBall(arena.radius, n);
 
@@ -173,6 +182,11 @@ export class PolyPangEngine {
 
     // 3. 게임 상태 브로드캐스트 (Delta)
     this.broadcastGameState();
+
+    // 디버그: 처음 몇 틱만 로그
+    if (this.gameState.tick <= 3) {
+      console.log(`[Tick ${this.gameState.tick}] Ball pos: (${this.gameState.ball.position.x.toFixed(3)}, ${this.gameState.ball.position.y.toFixed(3)})`);
+    }
   }
 
   /**

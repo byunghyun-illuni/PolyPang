@@ -20,6 +20,18 @@ import { reconnectionManager } from '../utils/reconnectionManager';
 import { PlayerState } from '../types/enums';
 
 /**
+ * 플레이어가 속한 방 찾기 (rooms Map에서 검색)
+ */
+function findPlayerRoom(playerId: string): string | undefined {
+  for (const [roomCode, room] of rooms.entries()) {
+    if (room.players.has(playerId)) {
+      return roomCode;
+    }
+  }
+  return undefined;
+}
+
+/**
  * PolyPang Socket 이벤트 핸들러 설정
  *
  * @param io - Socket.IO 서버
@@ -58,8 +70,8 @@ export function setupPolyPangHandlers(io: SocketIOServer, socket: Socket): void 
    * toggle_ready - Ready 토글
    */
   socket.on('toggle_ready', () => {
-    // socket.rooms에서 roomCode 찾기 (socket.id 제외한 첫 번째 room)
-    const roomCode = [...socket.rooms].find((r) => r !== socket.id);
+    // rooms Map에서 플레이어가 실제로 있는 방 찾기
+    const roomCode = findPlayerRoom(socket.id);
     console.log(`[toggle_ready] ${socket.id}: roomCode=${roomCode}`);
     if (!roomCode) return;
     handleToggleReady(io, socket, roomCode);
@@ -69,7 +81,7 @@ export function setupPolyPangHandlers(io: SocketIOServer, socket: Socket): void 
    * start_game - 게임 시작 (Host 전용)
    */
   socket.on('start_game', (callback) => {
-    const roomCode = [...socket.rooms].find((r) => r !== socket.id);
+    const roomCode = findPlayerRoom(socket.id);
     console.log(`[start_game] ${socket.id}: roomCode=${roomCode}`);
     if (!roomCode) return;
     handleStartGame(io, socket, roomCode, callback);

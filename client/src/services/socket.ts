@@ -10,7 +10,8 @@ let socket: Socket | null = null
  * Socket 연결 초기화
  */
 export function initSocket(): Socket {
-  if (socket?.connected) {
+  // 기존 소켓이 있으면 재사용 (연결 상태 관계없이)
+  if (socket) {
     return socket
   }
 

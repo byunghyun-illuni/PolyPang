@@ -65,9 +65,10 @@ export default function MultiplayerGameScreen() {
 
   // 내 플레이어 정보
   const myPlayer = room?.players.find((p) => p.userId === myUserId)
-  const myPlayerIndex = myPlayer?.sideIndex ?? 0
   const alivePlayers = gameState?.alivePlayers ?? []
-  const isAlive = alivePlayers.includes(myUserId ?? '')
+  // gameState.alivePlayers는 sideIndex 순서대로 정렬됨
+  const myPlayerIndex = alivePlayers.indexOf(myUserId ?? '')
+  const isAlive = myPlayerIndex >= 0
   const playerCount = gameState?.arena?.n ?? 8
 
   // Arena 회전은 handleRender에서 계산 (playerCount 변경 대응)
@@ -99,10 +100,18 @@ export default function MultiplayerGameScreen() {
 
   // Socket 이벤트 리스너
   useEffect(() => {
-    if (!socket) return
+    if (!socket) {
+      console.log('[Game] Socket not available yet')
+      return
+    }
+    console.log('[Game] Registering event listeners, socket.id:', socket.id, 'connected:', socket.connected)
 
     // 게임 상태 업데이트 (ball + paddles)
     const handleGameStateUpdate = (update: any) => {
+      // 첫 몇 번만 로그
+      if (update.tick <= 3) {
+        console.log('[Game] game_state_update received, tick:', update.tick, 'ball:', update.ball?.position)
+      }
       if (update.ball) {
         // Ball 위치 업데이트
         const scaledX = update.ball.position.x * arenaRadius
@@ -252,7 +261,7 @@ export default function MultiplayerGameScreen() {
       socket.off('arena_remesh_complete', handleArenaRemeshComplete)
       socket.off('game_over', handleGameOver)
     }
-  }, [socket, updateGameState, gameState, room, arenaRadius, myUserId])
+  }, [socket, room, myUserId]) // gameState, updateGameState, arenaRadius 제거 - 무한 루프 방지
 
   // 카운트다운 로직
   useEffect(() => {

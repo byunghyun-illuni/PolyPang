@@ -14,8 +14,9 @@ interface UseSocketReturn {
 }
 
 export function useSocket(): UseSocketReturn {
-  const [socket, setSocket] = useState<Socket | null>(null)
-  const [isConnected, setIsConnected] = useState(false)
+  // 기존 소켓이 있으면 초기값으로 사용 (페이지 이동 시 소켓 유지)
+  const [socket, setSocket] = useState<Socket | null>(() => getSocket())
+  const [isConnected, setIsConnected] = useState(() => getSocket()?.connected ?? false)
 
   const connect = useCallback(() => {
     const s = initSocket()

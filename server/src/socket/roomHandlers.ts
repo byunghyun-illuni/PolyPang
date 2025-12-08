@@ -291,15 +291,11 @@ export async function handleStartGame(
   room.state = RoomState.INGAME;
 
   // 플레이어 상태 변경: LOBBY_* → INGAME_ALIVE
-  // 플레이어에게 sideIndex 할당
-  let sideIndex = 0;
   for (const player of room.players.values()) {
     player.state = PlayerState.INGAME_ALIVE;
-    player.sideIndex = sideIndex;
-    sideIndex++;
   }
 
-  // 게임 엔진 생성 및 시작
+  // 게임 엔진 생성 및 시작 (sideIndex는 엔진에서 할당)
   const engine = new PolyPangEngine(io, roomCode);
   gameEngines.set(roomCode, engine);
 
