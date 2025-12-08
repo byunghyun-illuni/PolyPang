@@ -15,9 +15,9 @@ export function SocketProvider({ children }) {
   
   useEffect(() => {
     // Get the server URL from environment variables or use default
-    // Vite uses import.meta.env, not process.env
+    // localhost가 아니면 같은 origin 사용 (배포 환경)
     const serverUrl = import.meta.env.VITE_SERVER_URL ||
-      (import.meta.env.PROD ? window.location.origin : 'http://localhost:3001');
+      (window.location.hostname.includes('localhost') ? 'http://localhost:3001' : window.location.origin);
     
     // Create socket connection
     const socketConnection = io(serverUrl, {
